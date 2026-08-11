@@ -1,6 +1,6 @@
 ---
 name: diagram-design
-description: Create technical and product diagrams — architecture, IT current-state, flowchart, sequence, state machine, ER / data model, timeline, swimlane, quadrant, radar / spider, loop / flywheel, nested, tree, org chart, layer stack, venn, pyramid / funnel, bar chart, line chart, Gantt, scatter plot, high-level, process, medallion, data flow, DP integration, DP security matrix — as standalone HTML files with inline SVG. Ships with a neutral editorial skin and a first-run gate that prompts users to customize the style guide (colors, fonts) from their own website before generating. Includes annotation-callout primitive and optional sketchy variant.
+description: Create technical and product diagrams — architecture, IT current-state, flowchart, sequence, state machine, ER / data model, timeline, swimlane, quadrant, radar / spider, loop / flywheel, nested, tree, org chart, layer stack, venn, pyramid / funnel, bar chart, line chart, Gantt, scatter plot, high-level, process, medallion, data flow, DP integration, DP security matrix — as standalone HTML files with inline SVG. Also imports existing draw.io / diagrams.net files (.drawio, .drawio.png, .drawio.svg) and redraws them at a chosen output format (HTML / SVG / PNG), canvas size (slide, social card, doc, print), and level of detail (faithful reproduction or simplified for the audience's technical level). Ships with a neutral editorial skin and a first-run gate that prompts users to customize the style guide (colors, fonts) from their own website before generating. Includes annotation-callout primitive and optional sketchy variant.
 license: MIT
 metadata:
   version: "2.0"
@@ -411,6 +411,8 @@ Run before producing any diagram.
 - [ ] Right type for what I'm showing? (§3 selection guide)
 - [ ] Would a table / paragraph do the same job? (If yes — don't draw.)
 - [ ] Loaded the matching `references/type-*.md`?
+- [ ] Output dials set — format, size, detail level, audience? `viewBox` and type ramp match the size preset? (§11, [output-spec.md §6](references/output-spec.md))
+- [ ] If this is a draw.io import — fidelity ledger ready to report? (§11)
 
 **Remove test:**
 
@@ -473,7 +475,38 @@ Every diagram ships in three variants (see `assets/`):
 
 ---
 
-## 11. Output
+## 11. Importing an Existing Diagram (draw.io)
+
+When the user points at a `.drawio`, `.drawio.xml`, `.drawio.png`, or `.drawio.svg` file — "convert this", "redraw this diagram", "make this presentable", or the `/diagram-design:import` command — load [`references/import-drawio.md`](references/import-drawio.md) and follow it.
+
+The short version:
+
+1. **Extract, don't read.** Run `python3 scripts/drawio_extract.py <file>`. Most `.drawio` files are deflate+base64 payloads; the script handles every container draw.io writes and prints a digest of nodes, edges, containers, hubs, and budget flags.
+2. **Set the three dials** (§ below) before drawing.
+3. **Redraw — never convert.** Source coordinates, colors, fonts, and shape quirks are discarded. You keep the *content*: components, relationships, grouping, direction.
+4. **Report the fidelity ledger** — what you merged, collapsed, or dropped. The user knows the source and will notice.
+
+An import is bounded by its source: never invent a component to fill a layout, and never silently drop one.
+
+### Output dials — format, size, detail level
+
+Every diagram — imported or authored from scratch — is shaped by three decisions. Full spec in [`references/output-spec.md`](references/output-spec.md); set them **before** drawing, since each one changes the layout.
+
+| Dial | Options | Default |
+|---|---|---|
+| **Format** | `html` · `svg` · `png` · `html+png` | `html` |
+| **Size** | `doc-inline` · `doc-wide` · `slide-16x9` · `slide-4x3` · `social-og` · `social-square` · `print-a4-landscape` · `print-letter-landscape` · `fit` | `doc-inline` |
+| **Detail** | `faithful` (≤24 nodes, zoned) · `balanced` (≤12) · `simplified` (≤7) | `balanced` |
+| **Audience** | `engineer` · `mixed` · `executive` — governs wording, not count | `mixed` |
+
+Two consequences worth remembering here:
+
+- The size preset sets the `viewBox` **and** the type ramp. A slide gets 16px node names, not 12px — scaling the canvas without scaling the type is how projected diagrams end up unreadable.
+- `faithful` is the one documented exemption from the §7 complexity budget, and it's conditional: above 9 nodes the layout must be zoned, above 24 it must split into overview + detail. The connector rules in §6 never relax.
+
+---
+
+## 12. Output
 
 Always produce a single self-contained `.html` file:
 
@@ -486,3 +519,5 @@ Renders correctly in any modern browser.
 ### Exporting to PNG / SVG
 
 When the user asks to export, save, rasterize, or convert a generated diagram to `.png` or `.svg`, load [`references/export.md`](references/export.md) and follow the procedure there. Both formats deliver the diagram only (the `<svg>` node) — editorial wrappers like cards and headers are dropped by design. Export is **manual** — never produce export files unprompted.
+
+Pixel dimensions come from the `viewBox` × scale factor, so the size decision belongs to §11, not to export. If the user needs an exact frame (an OG card, a 1920×1080 slide image), see [`export.md` § Sizing the export](references/export.md).
