@@ -288,7 +288,7 @@ The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must s
 
 ### What loads when
 
-The top-level `SKILL.md` is always in context. Everything else is pulled in only when relevant — this is what keeps the skill fast even with 34 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 34 reference files.
 
 | You ask for… | Agent loads |
 |---|---|
