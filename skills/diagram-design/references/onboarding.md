@@ -159,7 +159,7 @@ Use the installed-skill location exposed by the current agent when available. Ot
 **Pi:**
 
 1. `~/.pi/agent/skills/<skill-name>/` and `~/.agents/skills/<skill-name>/` (user installs)
-2. `.pi/skills/<skill-name>/` and `.agents/skills/<skill-name>/` from the current directory through the repo root (project installs)
+2. `.pi/skills/<skill-name>/` in the current directory, plus `.agents/skills/<skill-name>/` from the current directory through the repo root (project installs)
 3. Package paths listed in `~/.pi/agent/settings.json` or `.pi/settings.json`; managed packages live under `~/.pi/agent/git/`, `~/.pi/agent/npm/`, `.pi/git/`, or `.pi/npm/`
 
 **Claude Code:**

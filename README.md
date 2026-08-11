@@ -93,7 +93,7 @@ All 27 diagrams ship in three variants: minimal light, minimal dark, and full-ed
 pi install https://github.com/cathrynlavery/diagram-design
 ```
 
-Run `/reload` in an open Pi session. The skill activates automatically for diagram requests; use `/skill:diagram-design` to invoke it explicitly. Pi also loads the `/export-diagram` prompt template.
+Run `/reload` in an open Pi session. Pi makes the skill available for matching diagram requests; use `/skill:diagram-design` to invoke it explicitly. Pi also loads the `/export-diagram` prompt template.
 
 **Claude Code:**
 

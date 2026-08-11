@@ -26,5 +26,6 @@ Full argument string: `$ARGUMENTS`
 3. Source lacks `<svg>` → refuse; write nothing.
 4. PNG requested without Playwright → show install instruction from reference verbatim; stop. Do not auto-install.
 5. `--scale` outside {1, 2, 3} → reject.
+6. Both `--svg-only` and `--png-only` supplied → reject them as mutually exclusive.
 
 After export, report output paths plus sizes.
