@@ -8,7 +8,7 @@
 
 *New in 2.0 — the Loop: flywheels with a shared-memory hub. The dashed lines are the write-backs.*
 
-27 types. One Claude Code skill. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram.
+27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram.
 
 No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
@@ -87,19 +87,13 @@ All 27 diagrams ship in three variants: minimal light, minimal dark, and full-ed
 
 ## Install
 
+**Pi:**
+
 ```bash
-# Clone the repo somewhere, then symlink the inner skill into Claude Code's skills dir
-git clone git@github.com:cathrynlavery/diagram-design.git ~/code/diagram-design
-ln -s ~/code/diagram-design/skills/diagram-design ~/.claude/skills/diagram-design
+pi install https://github.com/cathrynlavery/diagram-design
 ```
 
-The real skill lives at `skills/diagram-design/` inside the repo (so the same tree works as a Claude Code plugin, a Codex plugin, and a standalone skill). The symlink points Claude Code at that inner directory.
-
-Restart Claude Code. The skill registers as `diagram-design` and activates whenever you ask Claude to make a diagram.
-
-### Alternative: install as a plugin
-
-Quicker to install — but the skill lives in the plugin cache, so edits to `references/style-guide.md` don't survive plugin updates. Pick this if you just want to try it out; use the clone route above if you plan to customize the style guide by hand.
+Run `/reload` in an open Pi session. Pi makes the skill available for matching diagram requests; use `/skill:diagram-design` to invoke it explicitly. Pi also loads the `/export-diagram` prompt template.
 
 **Claude Code:**
 
@@ -116,6 +110,22 @@ Quicker to install — but the skill lives in the plugin cache, so edits to `ref
 npx skills add https://github.com/cathrynlavery/diagram-design --skill diagram-design
 ```
 
+### Editable install
+
+Managed installs are convenient, but changes to `references/style-guide.md` may be replaced by package updates. Clone the repo and install the local path if you plan to customize the style guide:
+
+```bash
+git clone git@github.com:cathrynlavery/diagram-design.git ~/code/diagram-design
+
+# Pi: register the checkout as a local package
+pi install ~/code/diagram-design
+
+# Claude Code: symlink the inner skill
+ln -s ~/code/diagram-design/skills/diagram-design ~/.claude/skills/diagram-design
+```
+
+The shared skill lives at `skills/diagram-design/`. Pi discovers it through the repo's standard `skills/` package directory; Claude Code, Codex, and other Agent Skills-compatible tools use the same files.
+
 ---
 
 ## Onboarding — make it look like *your* brand
@@ -128,7 +138,7 @@ Out of the box, diagrams render in a clean **jet-black + atomic-tangerine** pale
 
 ```
 You:     "onboard diagram-design to https://yoursite.com"
-Claude:  → fetches the homepage
+Agent:   → fetches the homepage
          → extracts the dominant palette + font stack
          → maps detected values to semantic roles:
              paper, ink, muted, accent, link
@@ -173,29 +183,40 @@ See [`skills/diagram-design/references/onboarding.md`](skills/diagram-design/ref
 ## Quickstart
 
 ```bash
-# Open the gallery to see all 27 diagrams
-open ~/.claude/skills/diagram-design/assets/index.html
+# From a cloned checkout, open the gallery to see all 27 diagrams
+open skills/diagram-design/assets/index.html       # macOS
+xdg-open skills/diagram-design/assets/index.html  # Linux
 
-# In Claude Code, just ask:
+# In Claude Code, Codex, or Pi, ask:
 # "Make me an architecture diagram of my app: frontend, backend, database, Redis cache."
 # "I need a quadrant showing Q2 projects by impact vs effort."
 # "Give me a sequence of a bearer call with token refresh on 401."
 # (branching refresh uses the ALT combined-fragment grammar in type-sequence.md;
-#  see assets/example-sequence-oauth.html — not a full authorize-code handshake)
+#  see skills/diagram-design/assets/example-sequence-oauth.html — not a full authorize-code handshake)
 ```
 
-Claude will pick the right type, build the HTML, and save it. You can also start from a template directly:
+Your agent will pick the right type, build the HTML, and save it. You can also start from a template directly:
 
 ```bash
-cp assets/template.html my-diagram.html        # minimal light
-cp assets/template-full.html my-diagram.html   # editorial with summary cards
+cp skills/diagram-design/assets/template.html my-diagram.html        # minimal light
+cp skills/diagram-design/assets/template-full.html my-diagram.html   # editorial with summary cards
 ```
 
 ---
 
 ## Export to PNG / SVG
 
-Diagrams ship as self-contained HTML, but you can export the diagram itself for Figma, slides, or social cards. Use the slash command:
+Diagrams ship as self-contained HTML, but you can export the diagram itself for Figma, slides, or social cards. Use the slash command for your agent:
+
+**Pi:**
+
+```
+/export-diagram path/to/diagram.html
+/export-diagram path/to/diagram.html --svg-only
+/export-diagram path/to/diagram.html --png-only --scale=3
+```
+
+**Claude Code:**
 
 ```
 /diagram-design:export path/to/diagram.html
@@ -219,42 +240,46 @@ Both formats are diagram-only — editorial cards and headers from `-full` varia
 
 ## Architecture
 
-Progressive disclosure. `SKILL.md` is a lean index — it tells Claude how to pick a type and where to look for detail. Every type lives in its own reference file, loaded only when relevant.
+Progressive disclosure. `SKILL.md` is a lean index — it tells the agent how to pick a type and where to look for detail. Every type lives in its own reference file, loaded only when relevant.
 
 ```
 diagram-design/
-├── SKILL.md                         — top-level: philosophy, selection guide, checklist
-├── references/                      — loaded only when a type or primitive is chosen
-│   ├── style-guide.md               — single source of truth for colors + fonts
-│   ├── onboarding.md                — the URL-to-tokens flow
-│   ├── type-architecture.md
-│   ├── type-flowchart.md
-│   ├── type-sequence.md
-│   ├── type-state.md
-│   ├── type-er.md
-│   ├── type-timeline.md
-│   ├── type-swimlane.md
-│   ├── type-quadrant.md
-│   ├── type-nested.md
-│   ├── type-tree.md
-│   ├── type-org-chart.md
-│   ├── type-layers.md
-│   ├── type-venn.md
-│   ├── type-pyramid.md
-│   ├── primitive-annotation.md      — italic-serif editorial callouts
-│   ├── primitive-sketchy.md         — hand-drawn SVG filter variant
-│   └── primitive-terminal.md        — charcoal-black CLI-window variant
-├── assets/
-│   ├── index.html                   — live gallery, tabbed
-│   ├── template*.html               — scaffolds for new diagrams
-│   ├── example-<type>.html          — 3 variants × 27 types
-│   ├── example-loop-terminal.html   — terminal-variant flagship
-│   ├── example-quadrant-consultant.html  — consultant-special 2×2 scenario matrix
-│   └── example-sequence-oauth*.html — sequence special: bearer + ALT refresh
-└── docs/screenshots/                — the images in this README
+├── prompts/
+│   └── export-diagram.md            — Pi `/export-diagram` prompt template
+├── skills/
+│   └── diagram-design/
+│       ├── SKILL.md                 — philosophy, selection guide, checklist
+│       ├── references/              — loaded only when a type or primitive is chosen
+│       │   ├── style-guide.md       — single source of truth for colors + fonts
+│       │   ├── onboarding.md        — the URL-to-tokens flow
+│       │   ├── type-architecture.md
+│       │   ├── type-flowchart.md
+│       │   ├── type-sequence.md
+│       │   ├── type-state.md
+│       │   ├── type-er.md
+│       │   ├── type-timeline.md
+│       │   ├── type-swimlane.md
+│       │   ├── type-quadrant.md
+│       │   ├── type-nested.md
+│       │   ├── type-tree.md
+│       │   ├── type-org-chart.md
+│       │   ├── type-layers.md
+│       │   ├── type-venn.md
+│       │   ├── type-pyramid.md
+│       │   ├── primitive-annotation.md
+│       │   ├── primitive-sketchy.md
+│       │   └── primitive-terminal.md
+│       └── assets/
+│           ├── index.html           — live gallery, tabbed
+│           ├── template*.html       — scaffolds for new diagrams
+│           ├── example-<type>.html  — 3 variants × 27 types
+│           ├── example-loop-terminal.html
+│           ├── example-quadrant-consultant.html
+│           └── example-sequence-oauth*.html
+└── docs/screenshots/                — images used in this README
 ```
 
-This keeps Claude's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 34 reference files covering every diagram type, primitive, and utility.
+This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 34 reference files covering every diagram type, primitive, and utility.
 
 ### Contributing / skin lint
 
@@ -263,9 +288,9 @@ The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must s
 
 ### What loads when
 
-The top-level `SKILL.md` is always in context. Everything else is pulled in only when relevant — this is what keeps the skill fast even with 34 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 34 reference files.
 
-| You ask for… | Claude loads |
+| You ask for… | Agent loads |
 |---|---|
 | "Make me a flowchart" | `SKILL.md` + `references/type-flowchart.md` |
 | "Build an architecture diagram" | `SKILL.md` + `references/type-architecture.md` |
@@ -275,7 +300,7 @@ The top-level `SKILL.md` is always in context. Everything else is pulled in only
 | "Give me a terminal / CLI-window version" | `SKILL.md` + `references/primitive-terminal.md` |
 | Routine diagram-making (any of the 27 diagrams) | Only `SKILL.md` + that one type's reference |
 
-No matter how many types exist, Claude only reads the one you need. Add a new type tomorrow and nothing else changes.
+No matter how many types exist, the agent only reads the one you need. Add a new type tomorrow and nothing else changes.
 
 ---
 
