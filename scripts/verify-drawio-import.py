@@ -10,14 +10,18 @@ Exit 0 only when all gates pass. Intended for local/PR checks alongside:
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import re
 import struct
 import subprocess
 import sys
+import tempfile
 import zlib
 from pathlib import Path
 from urllib.parse import quote
+
+sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILL = ROOT / "skills/diagram-design/SKILL.md"
@@ -48,6 +52,16 @@ def run_extract(args: list[str]) -> str:
     if proc.returncode != 0:
         fail(f"extractor exited {proc.returncode} for {args}: {proc.stderr.strip()}")
     return proc.stdout
+
+
+def load_extractor_module():
+    spec = importlib.util.spec_from_file_location("diagram_design_drawio_extract", EXTRACT)
+    if spec is None or spec.loader is None:
+        fail("could not load drawio extractor module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def compress_model(model: str) -> str:
@@ -160,7 +174,19 @@ def check_containers(tmp: Path) -> None:
         encoding="utf-8",
     )
 
-    for path in (compressed, png, svg):
+    decoy_svg = tmp / "embedded-with-decoy.drawio.svg"
+    escaped_mxfile = (
+        mxfile.replace("&", "&amp;").replace("<", "&lt;").replace('"', "&quot;")
+    )
+    decoy_svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg">'
+        '<metadata content="preview metadata"/>'
+        f'<g content="{escaped_mxfile}"/>'
+        "</svg>",
+        encoding="utf-8",
+    )
+
+    for path in (compressed, png, svg, decoy_svg):
         payload = json.loads(run_extract([str(path), "--json"]))
         analysis = payload["pages"][0]["analysis"]
         if analysis["nodes_total"] != 12 or analysis["edges_total"] != 8:
@@ -189,6 +215,69 @@ def check_containers(tmp: Path) -> None:
     ok("unsupported input exits 2 with a diagnostic")
 
 
+def check_security_and_limits(tmp: Path) -> None:
+    extractor = load_extractor_module()
+
+    compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+    compressed = compressor.compress(b"A" * 4096) + compressor.flush()
+    try:
+        extractor._decompress_limited(compressed, -15, limit=1024)
+    except extractor.PayloadTooLarge:
+        pass
+    else:
+        fail("bounded decompression accepted a payload above its output limit")
+
+    dtd = tmp / "entity.drawio"
+    dtd.write_text(
+        '<!DOCTYPE mxfile [<!ENTITY x "expanded">]>'
+        '<mxfile><diagram><mxGraphModel><root/></mxGraphModel></diagram></mxfile>',
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [sys.executable, str(EXTRACT), str(dtd)], capture_output=True, text=True
+    )
+    if proc.returncode != 2 or "DTD and entity declarations" not in proc.stderr:
+        fail("DTD/entity input must be rejected with a clear diagnostic")
+
+    compressed_dtd = tmp / "compressed-entity.drawio"
+    compressed_dtd.write_text(
+        '<mxfile><diagram name="Unsafe">'
+        + compress_model(
+            '<!DOCTYPE mxGraphModel [<!ENTITY x "expanded">]>'
+            '<mxGraphModel><root/></mxGraphModel>'
+        )
+        + "</diagram></mxfile>",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [sys.executable, str(EXTRACT), str(compressed_dtd)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 2 or "DTD and entity declarations" not in proc.stderr:
+        fail("DTD/entity declarations in compressed pages must be rejected")
+
+    truncated_png = tmp / "truncated.drawio.png"
+    truncated_png.write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 100) + b"tEXt")
+    proc = subprocess.run(
+        [sys.executable, str(EXTRACT), str(truncated_png)],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 2 or "truncated metadata chunk" not in proc.stderr:
+        fail("truncated PNG metadata must be rejected with a clear diagnostic")
+
+    proc = subprocess.run(
+        [sys.executable, str(EXTRACT), str(FIXTURE), "--max-rows", "0"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 2 or "--max-rows must be at least 1" not in proc.stderr:
+        fail("non-positive --max-rows must be rejected")
+
+    ok("resource limits, DTD rejection, PNG bounds, and CLI validation")
+
+
 def check_docs() -> None:
     import_text = IMPORT_REF.read_text(encoding="utf-8")
     for needle in (
@@ -199,6 +288,7 @@ def check_docs() -> None:
         "Multi-page files",
         "## Anti-patterns",
         "fidelity ledger",
+        "untrusted data",
         "--page all",
     ):
         if needle not in import_text:
@@ -277,17 +367,13 @@ def check_docs() -> None:
 
 
 def main() -> int:
-    tmp = ROOT / ".verify-drawio-tmp"
-    tmp.mkdir(exist_ok=True)
-    try:
+    with tempfile.TemporaryDirectory(prefix="diagram-design-drawio-") as tmp_dir:
+        tmp = Path(tmp_dir)
         check_files()
         check_parse_raw()
         check_containers(tmp)
+        check_security_and_limits(tmp)
         check_docs()
-    finally:
-        for child in tmp.glob("*"):
-            child.unlink()
-        tmp.rmdir()
     print("\nAll draw.io import gates passed.")
     return 0
 

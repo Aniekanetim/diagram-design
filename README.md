@@ -220,9 +220,9 @@ Already have diagrams in draw.io / diagrams.net? Point the skill at the file and
 
 Or just ask: *"redraw this drawio file for my deck"* / *"この drawio をスライド用にきれいにして"*.
 
-Reads every container draw.io writes — `.drawio`, `.drawio.xml`, `.drawio.png` (embedded diagram), `.drawio.svg` — including the compressed payloads that look like base64 garbage in an editor.
+Reads the common containers draw.io writes — `.drawio`, `.drawio.xml`, `.drawio.png` (embedded diagram), and `.drawio.svg` — including compressed payloads that look like base64 garbage in an editor.
 
-### The three dials
+### The four dials
 
 The point isn't conversion, it's **fitting the output to where it's going**. Same source file, three different diagrams:
 
@@ -330,7 +330,7 @@ diagram-design/
 └── docs/screenshots/                — images used in this README
 ```
 
-This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 34 reference files covering every diagram type, primitive, and utility.
+This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 36 reference files covering every diagram type, primitive, and utility.
 
 ### Contributing / skin lint
 
@@ -342,7 +342,7 @@ container formats and checks the references stay in sync.
 
 ### What loads when
 
-At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 34 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 36 reference files.
 
 | You ask for… | Agent loads |
 |---|---|

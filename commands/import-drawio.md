@@ -21,7 +21,7 @@ Accepts `.drawio`, `.drawio.xml`, `.xml`, `.drawio.png`, and `.drawio.svg`.
 - `--size=doc-inline` — `viewBox 0 0 960 600`.
 - `--detail=balanced` · `--audience=mixed`.
 - `--variant=light` — the minimal light template.
-- Page 0 when the file has several pages.
+- A single-page file selects its only page; a multi-page file lists pages and asks which to use.
 - Type is chosen from the extracted structure; `--type` forces one of the 27.
 
 ## Flags
@@ -38,7 +38,7 @@ Accepts `.drawio`, `.drawio.xml`, `.xml`, `.drawio.png`, and `.drawio.svg`.
 ## Required behaviour
 
 1. **No file provided** → ask which `.drawio` file. Don't guess.
-2. **Always run `skills/diagram-design/scripts/drawio_extract.py` first.** Never read a `.drawio` file directly — most are compressed, and the raw XML is noise.
+2. **Always locate the installed skill and run `<skill-dir>/scripts/drawio_extract.py` first.** Never assume the skill is under the current working directory, and never read a `.drawio` file directly — most are compressed, and the raw XML is noise.
 3. **Extractor exits non-zero** → report its message verbatim and stop.
 4. **Digest shows 0 nodes** → the source is image-only or encrypted. Say so; ask for the original file. Don't invent content.
 5. **Multi-page file with no `--page`** → list the pages with their node/edge counts and ask which one.
@@ -47,4 +47,4 @@ Accepts `.drawio`, `.drawio.xml`, `.xml`, `.drawio.png`, and `.drawio.svg`.
 8. **Never carry over source coordinates, colors, or fonts.** The output is a redraw in the project's `style-guide.md` skin.
 9. Run the SKILL.md §9 taste gate and the `output-spec.md` §6 checklist before writing.
 
-After writing the files, report the paths, sizes, the three dials used, and the fidelity ledger (what was merged, collapsed, or dropped).
+After writing the files, report the paths, sizes, the four dials used, and the fidelity ledger (what was merged, collapsed, or dropped).

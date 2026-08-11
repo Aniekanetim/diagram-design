@@ -1,14 +1,15 @@
-# Output spec — format × size × detail level
+# Draw.io import output spec — format × size × detail × audience
 
-Three dials decide what a diagram becomes. Set all three **before** drawing — they change the layout, the type ramp, and the node count, so retrofitting them afterwards means redrawing.
+Four dials decide what an imported diagram becomes. Set them **before** redrawing — they change the deliverable, layout, type ramp, node count, and wording, so retrofitting them afterwards means redrawing.
 
 | Dial | Question it answers | Default |
 |---|---|---|
 | **Format** | Where does this file land? | `html` |
 | **Size** | How big is the canvas, and how far away is the reader? | `doc-inline` |
-| **Detail level** | Reproduce every element, or compress for the audience? | `balanced` + `mixed` |
+| **Detail level** | Reproduce every element, or compress it? | `balanced` |
+| **Audience** | How technical should the wording be? | `mixed` |
 
-Ask the user for any dial they didn't specify — one question, three options each, not three separate rounds. If they decline to choose, use the defaults above and say which ones you used.
+Infer choices that are clear from the request (for example, "for my deck" implies a slide preset). Ask one concise question for anything material that remains ambiguous. If the user does not care, use the defaults above and say which ones you used.
 
 ---
 
@@ -167,7 +168,7 @@ The reader of the diagram can't see what's missing. The person who asked for it 
 
 Run alongside the SKILL.md §9 taste gate.
 
-- [ ] All three dials set — explicitly by the user, or defaulted and stated?
+- [ ] All four dials set — explicitly requested, inferred from the destination, or defaulted and stated?
 - [ ] `viewBox` matches the size preset exactly, values divisible by 4?
 - [ ] Type ramp matches the size class — not the standard ramp on a slide?
 - [ ] 40px outer margin honoured (64px for `social-og`)?
