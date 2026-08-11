@@ -161,7 +161,7 @@ ICONS: dict[str, list[tuple[str, str, str, str]]] = {
     ],
     "Statistical tools": [
         ("spss",    "devicon:plain", "spss",            "IBM SPSS Statistics."),
-        ("sas",     "url", "https://www.svgrepo.com/download/374062/sas.svg", "SAS analytics platform."),
+        ("sas",     "url", "https://upload.wikimedia.org/wikipedia/commons/1/10/SAS_logo_horiz.svg", "SAS analytics platform."),
         ("stata",   "url", "https://icon.icepanel.io/Technology/svg/Stata.svg", "Stata statistical software."),
         ("rstudio", "devicon:plain", "rstudio",         "RStudio / Posit IDE for R and Python."),
         ("qgis",    "simple",        "qgis",            "QGIS open-source GIS platform."),
