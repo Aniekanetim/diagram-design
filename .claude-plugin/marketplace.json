@@ -1,7 +1,7 @@
 {
   "name": "diagram-design",
   "metadata": {
-    "description": "Editorial-quality technical and product diagrams — 27 types rendered as standalone HTML with inline SVG, skinnable to match your brand"
+    "description": "Editorial-quality technical and product diagrams — 27 types rendered as standalone HTML with inline SVG, skinnable to match your brand, plus draw.io import that redraws existing .drawio files at a chosen format, size, and level of detail"
   },
   "owner": {
     "name": "Cathryn Lavery"

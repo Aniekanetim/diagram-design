@@ -92,6 +92,32 @@ Default `device_scale_factor=2` for crisp output. Accept `1` for compact assets 
 
 `example-architecture.html` → `example-architecture.png`, written next to the source. Honour explicit user-provided paths.
 
+## Sizing the export
+
+The PNG's pixel dimensions are the SVG's `viewBox` × `device_scale_factor`. So the size decision was already made when the diagram was drawn — see [`output-spec.md` §2](output-spec.md) for the presets. Export only picks the multiplier.
+
+| Destination | Scale | Result from a 1280×720 `viewBox` |
+|---|---|---|
+| Docs, README, wiki | 2 | 2560×1440 |
+| Slide deck (projected) | 2 | 2560×1440 |
+| Print / PDF handout | 3 | 3840×2160 |
+| Inline thumbnail, email | 1 | 1280×720 |
+
+### Hitting an exact pixel size
+
+When the user needs specific dimensions (an OG card at exactly 1200×630, a slide image at 1920×1080), compute the scale factor instead of guessing — Playwright accepts fractional values:
+
+```
+scale = target_width / viewBox_width
+```
+
+A 960-wide `viewBox` at a 1200px target is `scale=1.25`. Two rules:
+
+- **Never scale below 1** to hit a small target — that soft-focuses the type. Redraw at a smaller preset instead.
+- **Never scale past 4** — beyond that you're upscaling a layout that was designed for a smaller canvas; redraw at `slide-16x9` or a print preset.
+
+If the target aspect ratio doesn't match the `viewBox` aspect ratio, say so and offer to redraw at the matching preset. Padding or cropping a finished diagram to fit a frame is not an export operation — it breaks the 40px safe margin.
+
 ## Edge cases
 
 - **Source is `assets/index.html`** (the gallery, multiple SVGs in one file): refuse the export and ask the user which specific diagram file they meant. Don't guess.

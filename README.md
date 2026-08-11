@@ -8,7 +8,7 @@
 
 *New in 2.0 — the Loop: flywheels with a shared-memory hub. The dashed lines are the write-backs.*
 
-27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram.
+27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram. Already have diagrams in draw.io? Point it at the file and it redraws them at the format, size, and level of detail your audience needs.
 
 No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
@@ -204,6 +204,48 @@ cp skills/diagram-design/assets/template-full.html my-diagram.html   # editorial
 
 ---
 
+## Import from draw.io
+
+Already have diagrams in draw.io / diagrams.net? Point the skill at the file and it **redraws** them — same content, this design system, at whatever the destination needs.
+
+![Redrawn from a .drawio file](docs/screenshots/import-drawio.png)
+
+*A 12-node draw.io file redrawn at `balanced` detail for a blog post. The source's six pastel fills became one accent; its hand-dragged coordinates became a 4px grid.*
+
+```
+/diagram-design:import platform.drawio
+/diagram-design:import platform.drawio --size=slide-16x9 --detail=simplified --audience=executive
+/diagram-design:import platform.drawio --detail=faithful --format=png --page=all
+```
+
+Or just ask: *"redraw this drawio file for my deck"* / *"この drawio をスライド用にきれいにして"*.
+
+Reads the common containers draw.io writes — `.drawio`, `.drawio.xml`, `.drawio.png` (embedded diagram), and `.drawio.svg` — including compressed payloads that look like base64 garbage in an editor.
+
+### The four dials
+
+The point isn't conversion, it's **fitting the output to where it's going**. Same source file, three different diagrams:
+
+| Dial | Options | What it changes |
+|---|---|---|
+| **Format** | `html` · `svg` · `png` · `html+png` | The deliverable. SVG for Figma, PNG for slides, HTML for the web. |
+| **Size** | `doc-inline` · `doc-wide` · `slide-16x9` · `slide-4x3` · `social-og` · `social-square` · `print-a4-landscape` · `print-letter-landscape` · `fit` | The `viewBox` **and the type ramp** — a projected slide gets 16px node names, not 12px. |
+| **Detail** | `faithful` (≤24 nodes, zoned) · `balanced` (≤12) · `simplified` (≤7) | How much of the source survives, via a fixed degrade ladder — decorations, then duplicates, then leaf clusters, then infrastructure. |
+| **Audience** | `engineer` · `mixed` · `executive` | The *wording*, not the count. `Auth Service / JWT · RS256 · :8443` → `Auth Service / token check` → `Sign-in`. |
+
+Every import ends with a **fidelity ledger** — what got merged, collapsed, or dropped. You know the source; you'd notice anyway.
+
+```
+Detail: balanced · 12 source nodes → 8 drawn
+Collapsed: "Token valid?" decision → edge label on Gateway → Auth
+Dropped:   1 sticky note ("legacy path, to be retired") — unconnected in source
+Kept in full: the request path (Web/Mobile → Gateway → Orders → Postgres)
+```
+
+What never carries over: source coordinates, source palette, source fonts, draw.io's diagonal connector spaghetti. What always does: components, relationships, grouping, and direction. See [`references/import-drawio.md`](skills/diagram-design/references/import-drawio.md) and [`references/output-spec.md`](skills/diagram-design/references/output-spec.md).
+
+---
+
 ## Export to PNG / SVG
 
 Diagrams ship as self-contained HTML, but you can export the diagram itself for Figma, slides, or social cards. Use the slash command for your agent:
@@ -244,6 +286,9 @@ Progressive disclosure. `SKILL.md` is a lean index — it tells the agent how to
 
 ```
 diagram-design/
+├── commands/
+│   ├── export-diagram.md            — Claude Code export command
+│   └── import-drawio.md             — Claude Code draw.io import command
 ├── prompts/
 │   └── export-diagram.md            — Pi `/export-diagram` prompt template
 ├── skills/
@@ -252,6 +297,9 @@ diagram-design/
 │       ├── references/              — loaded only when a type or primitive is chosen
 │       │   ├── style-guide.md       — single source of truth for colors + fonts
 │       │   ├── onboarding.md        — the URL-to-tokens flow
+│       │   ├── import-drawio.md     — draw.io redraw procedure
+│       │   ├── output-spec.md       — format × size × detail level
+│       │   ├── export.md            — SVG / PNG export + sizing
 │       │   ├── type-architecture.md
 │       │   ├── type-flowchart.md
 │       │   ├── type-sequence.md
@@ -269,26 +317,32 @@ diagram-design/
 │       │   ├── primitive-annotation.md
 │       │   ├── primitive-sketchy.md
 │       │   └── primitive-terminal.md
+│       ├── scripts/
+│       │   └── drawio_extract.py    — draw.io → structured IR
 │       └── assets/
 │           ├── index.html           — live gallery, tabbed
 │           ├── template*.html       — scaffolds for new diagrams
 │           ├── example-<type>.html  — 3 variants × 27 types
 │           ├── example-loop-terminal.html
 │           ├── example-quadrant-consultant.html
+│           ├── example-import-drawio.html
 │           └── example-sequence-oauth*.html
 └── docs/screenshots/                — images used in this README
 ```
 
-This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 34 reference files covering every diagram type, primitive, and utility.
+This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 36 reference files covering every diagram type, primitive, and utility.
 
 ### Contributing / skin lint
 
 Before submitting a new example, run `python3 scripts/lint-skin.py <your-new-example.html>`.
 The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must stay green.
+If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` must also pass —
+it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
+container formats and checks the references stay in sync.
 
 ### What loads when
 
-At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 34 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 36 reference files.
 
 | You ask for… | Agent loads |
 |---|---|
@@ -298,6 +352,7 @@ At startup, the agent sees only the skill name and description. When a request m
 | "Add an editorial callout to this diagram" | `SKILL.md` + `references/primitive-annotation.md` |
 | "Give me a hand-drawn version" | `SKILL.md` + `references/primitive-sketchy.md` |
 | "Give me a terminal / CLI-window version" | `SKILL.md` + `references/primitive-terminal.md` |
+| "Redraw this .drawio file for my deck" | `SKILL.md` + `references/import-drawio.md` + `references/output-spec.md` + the chosen type's reference |
 | Routine diagram-making (any of the 27 diagrams) | Only `SKILL.md` + that one type's reference |
 
 No matter how many types exist, the agent only reads the one you need. Add a new type tomorrow and nothing else changes.
