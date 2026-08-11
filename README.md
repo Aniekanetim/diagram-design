@@ -166,6 +166,10 @@ Every new diagram now uses your colors. Your website's paper color becomes the d
 
 Before writing tokens, the skill verifies WCAG AA contrast on `ink` over `paper`. If your site has a color that fails contrast at diagram sizes (9–12px), it proposes an adjusted value and explains why.
 
+### Accessible by default
+
+Every diagram template gives the inline SVG an accessible name and description: `role="img"`, a resolving `aria-labelledby`, and first-child `<title>` / `<desc>` slots. IDs are prefixed per diagram and variant, so multiple SVG exports can be safely inlined on one page without duplicate accessible-name IDs. Decorative specimen icons are hidden from assistive technology instead.
+
 ### Manual override
 
 Prefer to set tokens by hand? Open [`skills/diagram-design/references/style-guide.md`](skills/diagram-design/references/style-guide.md) and edit the table. Everything downstream reads from there — all 27 diagrams, the annotation primitive, and the gallery all inherit semantic role names (`accent`, not `#eb6c36`).
@@ -336,6 +340,8 @@ This keeps the agent's working context tight (only load what you need) and makes
 
 Before submitting a new example, run `python3 scripts/lint-skin.py <your-new-example.html>`.
 The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must stay green.
+The linter's `a11y` category rejects diagram SVGs without a resolving accessible name,
+an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs.
 If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` must also pass —
 it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
 container formats and checks the references stay in sync.

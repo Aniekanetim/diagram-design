@@ -177,4 +177,5 @@ Run alongside the SKILL.md §9 taste gate.
 - [ ] Node names, sublabels, and edge labels all at the same audience level?
 - [ ] CJK labels given a font fallback?
 - [ ] Fidelity ledger reported for anything cut?
+- [ ] Diagram `<svg>` has `role="img"`, resolving `aria-labelledby`, a non-empty first-child `<title>`, a non-empty `<desc>`, and per-diagram/variant prefixed IDs?
 - [ ] Requested non-HTML formats produced via [`export.md`](export.md), not hand-authored?

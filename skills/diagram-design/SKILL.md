@@ -429,6 +429,9 @@ Run before producing any diagram.
 
 **Technical:**
 
+- [ ] Diagram `<svg>` has `role="img"` and `aria-labelledby` resolving to its `<title>` and `<desc>`?
+- [ ] `<title>` is the first child of `<svg>` (before `<defs>`) and both `<title>` and `<desc>` are filled in?
+- [ ] `<title>` / `<desc>` IDs are prefixed for this diagram and variant — never bare `title` / `desc`?
 - [ ] Arrows drawn before boxes?
 - [ ] **Every connector between off-axis nodes uses a rounded right-angle elbow (`r=8`)? No diagonal `<line>` slants?**
 - [ ] **Every arrow label has a visible 6–10px gap above its connector? (Mask rect not touching the stroke.)**
@@ -470,7 +473,7 @@ Every diagram ships in three variants (see `assets/`):
 
 1. Copy the variant closest to what you want (`template.html` for minimal, `template-full.html` for cards).
 2. Load the matching `references/type-<name>.md` for layout conventions.
-3. Replace the eyebrow, h1, and SVG body.
+3. Replace the eyebrow, h1, and SVG body. Replace `[diagram-slug]` with the file's diagram/variant slug, fill the copied `<title>` / `<desc>` placeholders, and do not delete them.
 4. Run the §9 taste gate.
 
 ---
@@ -515,6 +518,17 @@ Always produce a single self-contained `.html` file:
 - No JavaScript required
 
 Renders correctly in any modern browser.
+
+### Accessible SVG contract
+
+Every diagram is an accessible figure by default:
+
+1. Its `<svg>` carries `role="img"` and `aria-labelledby` naming the diagram's `<title>` and `<desc>`.
+2. `<title>` is the first child of `<svg>`, before `<defs>`. Assistive technology may ignore a title placed later.
+3. The IDs are prefixed per diagram and variant: `<slug>-title` / `<slug>-desc`, where the slug matches the file (`loop`, `loop-dark`, `loop-full`). Bare `title` / `desc` IDs are banned because two inline diagrams would create duplicate IDs and the second could be announced with the first diagram's name.
+4. `<title>` is the short name of the subject — roughly the page `<h1>`, and about 60 characters or fewer.
+5. `<desc>` is one sentence stating what the diagram shows in terms a reader needs without the image. Describe the content, not the geometry: “Org chart showing a command center routing work to specialist agents and escalation owners,” not “A box at the top with five boxes below it.” A shape-by-shape narration is worse than no useful description.
+6. Decorative-only SVG, such as the specimen glyphs in `assets/icons.html`, carries `aria-hidden="true"` instead. Giving decorative marks accessible names adds noise.
 
 ### Exporting to PNG / SVG
 

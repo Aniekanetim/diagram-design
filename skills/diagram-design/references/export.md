@@ -20,6 +20,8 @@ The slash command is a thin wrapper that delegates here — both paths run the s
 
 Both formats are **diagram-only** — just the `<svg>` node. Editorial wrappers (header, summary cards, footer in `-full` variants) are intentionally dropped: the export deliverable is the diagram itself, suitable for Figma, slides, social cards, or blog images.
 
+The SVG-only export keeps the source `<title>` and `<desc>` with the diagram. Their per-diagram and per-variant prefixed IDs are what make multiple exported SVGs safe to inline in the same page without one figure resolving to another figure's accessible name.
+
 If the user explicitly asks for "a screenshot of the whole page including the cards", that's a different request — fall back to a normal full-page screenshot via the user's OS or browser.
 
 ## SVG export procedure
@@ -29,6 +31,7 @@ If the user explicitly asks for "a screenshot of the whole page including the ca
 3. Make it standalone:
    - Ensure the opening tag has `xmlns="http://www.w3.org/2000/svg"`. Add it if missing.
    - Ensure a `viewBox` is present. The skill's templates always include one; warn the user if absent rather than guessing.
+   - Preserve `role="img"`, `aria-labelledby`, and the first-child `<title>` / `<desc>` exactly as authored.
    - Inject Google Fonts `@import` so the SVG renders with correct typography in a browser:
      ```svg
      <defs>

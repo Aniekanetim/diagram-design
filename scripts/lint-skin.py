@@ -8,6 +8,8 @@ skin. Use ``--all --baseline`` to skip those documented legacy files.
 import argparse
 import re
 import sys
+from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 
 
@@ -48,6 +50,197 @@ ALLOWED_FONTS = {
     "ui-monospace",
 }
 CSS_FONT_KEYWORDS = {"inherit", "initial", "revert", "revert-layer", "unset"}
+
+
+@dataclass
+class SvgTextElement:
+    tag: str
+    element_id: str | None
+    line: int
+    offset: int
+    text: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SvgElement:
+    attrs: dict[str, str | None]
+    line: int
+    offset: int
+    content_depth: int
+    first_child: str | None = None
+    ids: set[str] = field(default_factory=set)
+    bare_id_locations: list[tuple[int, int]] = field(default_factory=list)
+    titles: list[SvgTextElement] = field(default_factory=list)
+    descriptions: list[SvgTextElement] = field(default_factory=list)
+
+
+class AccessibleSvgParser(HTMLParser):
+    """Collect accessible-name data without rendering or executing HTML.
+
+    Trust boundary: input files are untrusted source text. ``HTMLParser`` only
+    tokenizes that text; this linter never evaluates scripts, fetches URLs, or
+    opens referenced resources.
+    """
+
+    def __init__(self, text):
+        super().__init__(convert_charrefs=True)
+        self.line_offsets = [0]
+        self.line_offsets.extend(
+            match.end() for match in re.finditer(r"\n", text)
+        )
+        self.element_stack = []
+        self.svg_stack = []
+        self.svgs = []
+        self.open_text = []
+
+    def source_offset(self):
+        line, column = self.getpos()
+        return self.line_offsets[line - 1] + column
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.casefold()
+        attr_map = {name.casefold(): value for name, value in attrs}
+        offset = self.source_offset()
+        line, _column = self.getpos()
+
+        if self.svg_stack:
+            parent = self.svg_stack[-1]
+            if len(self.element_stack) == parent.content_depth:
+                if parent.first_child is None:
+                    parent.first_child = tag
+            element_id = attr_map.get("id")
+            if element_id:
+                for svg in self.svg_stack:
+                    svg.ids.add(element_id)
+                    if element_id in {"title", "desc"}:
+                        svg.bare_id_locations.append((line, offset))
+
+        if tag == "svg":
+            svg = SvgElement(
+                attrs=attr_map,
+                line=line,
+                offset=offset,
+                content_depth=len(self.element_stack) + 1,
+            )
+            self.svgs.append(svg)
+            self.svg_stack.append(svg)
+        elif tag in {"title", "desc"} and self.svg_stack:
+            svg = self.svg_stack[-1]
+            if len(self.element_stack) == svg.content_depth:
+                element = SvgTextElement(
+                    tag=tag,
+                    element_id=attr_map.get("id"),
+                    line=line,
+                    offset=offset,
+                )
+                if tag == "title":
+                    svg.titles.append(element)
+                else:
+                    svg.descriptions.append(element)
+                self.open_text.append(element)
+
+        self.element_stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        tag = tag.casefold()
+        for index in range(len(self.open_text) - 1, -1, -1):
+            if self.open_text[index].tag == tag:
+                del self.open_text[index]
+                break
+
+        if tag == "svg" and self.svg_stack:
+            self.svg_stack.pop()
+
+        for index in range(len(self.element_stack) - 1, -1, -1):
+            if self.element_stack[index] == tag:
+                del self.element_stack[index:]
+                break
+
+    def handle_data(self, data):
+        for element in self.open_text:
+            element.text.append(data)
+
+
+def lint_accessible_svgs(text):
+    parser = AccessibleSvgParser(text)
+    parser.feed(text)
+    parser.close()
+    findings = []
+
+    def add(line, offset, message):
+        findings.append((line, offset, "a11y", message))
+
+    for svg in parser.svgs:
+        aria_hidden = (svg.attrs.get("aria-hidden") or "").casefold()
+        if aria_hidden == "true":
+            continue
+
+        if (svg.attrs.get("role") or "").casefold() != "img":
+            add(svg.line, svg.offset, 'diagram <svg> must carry role="img"')
+
+        labelled_by = (svg.attrs.get("aria-labelledby") or "").split()
+        if not labelled_by:
+            add(
+                svg.line,
+                svg.offset,
+                "aria-labelledby must name the <title> and <desc>",
+            )
+        else:
+            missing_ids = [
+                element_id for element_id in labelled_by if element_id not in svg.ids
+            ]
+            if missing_ids:
+                add(
+                    svg.line,
+                    svg.offset,
+                    "aria-labelledby references missing id(s): "
+                    + ", ".join(missing_ids),
+                )
+
+        title = svg.titles[0] if svg.titles else None
+        description = svg.descriptions[0] if svg.descriptions else None
+        if title is None:
+            add(svg.line, svg.offset, "diagram <svg> must contain a <title>")
+        else:
+            if svg.first_child != "title":
+                add(
+                    title.line,
+                    title.offset,
+                    "<title> must be the first child element of <svg>",
+                )
+            if not "".join(title.text).strip():
+                add(title.line, title.offset, "<title> must not be empty")
+
+        if description is None:
+            add(svg.line, svg.offset, "diagram <svg> must contain a <desc>")
+        elif not "".join(description.text).strip():
+            add(description.line, description.offset, "<desc> must not be empty")
+
+        title_id = title.element_id if title else None
+        description_id = description.element_id if description else None
+        if svg.bare_id_locations:
+            line, offset = svg.bare_id_locations[0]
+            add(
+                line,
+                offset,
+                'bare id="title" and id="desc" are not allowed',
+            )
+
+        if (
+            labelled_by
+            and (title_id not in labelled_by or description_id not in labelled_by)
+        ):
+            add(
+                svg.line,
+                svg.offset,
+                "aria-labelledby must name the <title> and <desc> IDs",
+            )
+
+    return findings
 
 
 def normalize_hex(value):
@@ -115,7 +308,7 @@ def named_families(value):
 
 
 def lint_text(text, colors, rgb_triplets):
-    findings = []
+    findings = lint_accessible_svgs(text)
 
     def add(offset, category, message):
         findings.append((line_number(text, offset), offset, category, message))
