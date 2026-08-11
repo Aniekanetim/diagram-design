@@ -36,7 +36,7 @@ The MIT license is reproduced in full at https://github.com/devicons/devicon/blo
 
 ## One-off sourced icons
 
-The `scripts/vendor/icons/url/` directory contains one-off sourced icons for SAS, from [SVGRepo](https://www.svgrepo.com/download/374062/sas.svg), and Stata, from the [IcePanel Technology Icons collection](https://icon.icepanel.io/Technology/svg/Stata.svg) published via techicons.dev. Their provenance is recorded here; use of these product marks is covered by the Trademarks note below.
+The `scripts/vendor/icons/url/` directory contains one-off sourced icons for SAS, from [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:SAS_logo_horiz.svg) (public domain), and Stata, from the [IcePanel Technology Icons collection](https://icon.icepanel.io/Technology/svg/Stata.svg) published via techicons.dev. Their provenance is recorded here; use of these product marks is covered by the Trademarks note below.
 
 ## Trademarks
 
