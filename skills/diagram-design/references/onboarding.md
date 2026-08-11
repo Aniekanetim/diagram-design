@@ -7,7 +7,7 @@ Takes about 60 seconds.
 Three source methods are supported. Jump to the relevant section:
 
 - [§ URL](#url) — fetch a live website
-- [§ Skill](#skill) — read an installed Claude Code skill that carries design tokens
+- [§ Skill](#skill) — read an installed Agent Skill that carries design tokens
 - [§ Folder](#folder) — read a local design-system directory (CSS, JSON, Markdown)
 
 ---
@@ -128,7 +128,7 @@ Write the new tokens to `style-guide.md`. Suggest running the `/regenerate-examp
 
 After onboarding, the user should:
 
-1. Open `assets/index.html` (gallery) and confirm the new palette feels coherent across all 26 types.
+1. Open `assets/index.html` (gallery) and confirm the new palette feels coherent across all 27 types.
 2. If any type looks off, they usually need to tune `muted` (often too dark or too light against the new `paper`).
 
 ---
@@ -144,7 +144,7 @@ After onboarding, the user should:
 
 ## § Skill
 
-Extract tokens from an installed Claude Code skill that carries its own design system (e.g. a `brand-design` or `ui-kit` skill).
+Extract tokens from an installed Agent Skill that carries its own design system (e.g. a `brand-design` or `ui-kit` skill).
 
 ### Invocation
 
@@ -154,13 +154,20 @@ Or the gate offers this as option (b) and the user names the skill.
 
 ### Step 1 — locate the skill
 
-Search for the skill in order:
+Use the installed-skill location exposed by the current agent when available. Otherwise search locations for the active harness:
+
+**Pi:**
+
+1. `~/.pi/agent/skills/<skill-name>/` and `~/.agents/skills/<skill-name>/` (user installs)
+2. `.pi/skills/<skill-name>/` and `.agents/skills/<skill-name>/` from the current directory through the repo root (project installs)
+3. Package paths listed in `~/.pi/agent/settings.json` or `.pi/settings.json`; managed packages live under `~/.pi/agent/git/`, `~/.pi/agent/npm/`, `.pi/git/`, or `.pi/npm/`
+
+**Claude Code:**
 
 1. `~/.claude/skills/<skill-name>/` (user install)
 2. `.claude/skills/<skill-name>/` (project install)
-3. Any path the user provides explicitly
 
-If not found, ask the user to confirm the skill name or provide the path.
+Finally, check any path the user provides explicitly. If the skill is still not found, ask the user to confirm the name or provide its path.
 
 ### Step 2 — read token sources
 
