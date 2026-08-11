@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -116,12 +117,71 @@ def main() -> int:
             'bare id="title" and id="desc" are not allowed',
             directory,
         )
+        require_failure(
+            "placeholder-ids",
+            VALID_SVG.replace("fixture-title", "[diagram-slug]-title").replace(
+                "fixture-desc", "[diagram-slug]-desc"
+            ),
+            "accessible-name IDs contain unresolved placeholder(s): "
+            "[diagram-slug]-title, [diagram-slug]-desc",
+            directory,
+        )
+        require_failure(
+            "duplicate-naming-ids",
+            VALID_SVG + VALID_SVG,
+            'duplicate accessible-name id="fixture-desc" is not allowed',
+            directory,
+        )
         require_pass(
             "decorative",
             '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
             '<path d="M0 0h1v1z"/></svg>\n',
             directory,
         )
+
+        project = directory / "baseline-project"
+        (project / "scripts").mkdir(parents=True)
+        (project / "skills/diagram-design/assets").mkdir(parents=True)
+        (project / "skills/diagram-design/references").mkdir(parents=True)
+        shutil.copy2(LINTER, project / "scripts/lint-skin.py")
+        shutil.copy2(
+            ROOT / "skills/diagram-design/references/style-guide.md",
+            project / "skills/diagram-design/references/style-guide.md",
+        )
+        (project / "scripts/lint-skin-baseline.txt").write_text(
+            "example-baseline.html\n", encoding="utf-8"
+        )
+        (project / "skills/diagram-design/assets/example-baseline.html").write_text(
+            '<svg style="color: #123456"></svg>\n', encoding="utf-8"
+        )
+        baseline_result = subprocess.run(
+            [
+                sys.executable,
+                str(project / "scripts/lint-skin.py"),
+                "--all",
+                "--baseline",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if baseline_result.returncode != 1:
+            raise AssertionError(
+                "baseline-a11y: expected exit 1, got "
+                f"{baseline_result.returncode}\n"
+                f"{baseline_result.stdout}{baseline_result.stderr}"
+            )
+        if "a11y: diagram <svg> must carry role=\"img\"" not in baseline_result.stdout:
+            raise AssertionError(
+                "baseline-a11y: missing expected accessibility finding\n"
+                f"{baseline_result.stdout}"
+            )
+        if "color:" in baseline_result.stdout:
+            raise AssertionError(
+                "baseline-a11y: legacy visual finding was not exempted\n"
+                f"{baseline_result.stdout}"
+            )
+        print("OK: baseline file receives a11y checks but keeps visual exemptions")
 
     print("All accessible-SVG lint cases passed.")
     return 0

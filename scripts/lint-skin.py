@@ -92,6 +92,7 @@ class AccessibleSvgParser(HTMLParser):
         self.svg_stack = []
         self.svgs = []
         self.open_text = []
+        self.id_locations = {}
 
     def source_offset(self):
         line, column = self.getpos()
@@ -102,13 +103,15 @@ class AccessibleSvgParser(HTMLParser):
         attr_map = {name.casefold(): value for name, value in attrs}
         offset = self.source_offset()
         line, _column = self.getpos()
+        element_id = attr_map.get("id")
+        if element_id:
+            self.id_locations.setdefault(element_id, []).append((line, offset))
 
         if self.svg_stack:
             parent = self.svg_stack[-1]
             if len(self.element_stack) == parent.content_depth:
                 if parent.first_child is None:
                     parent.first_child = tag
-            element_id = attr_map.get("id")
             if element_id:
                 for svg in self.svg_stack:
                     svg.ids.add(element_id)
@@ -174,6 +177,19 @@ def lint_accessible_svgs(text):
     def add(line, offset, message):
         findings.append((line, offset, "a11y", message))
 
+    naming_ids = {
+        element.element_id
+        for svg in parser.svgs
+        if (svg.attrs.get("aria-hidden") or "").casefold() != "true"
+        for element in svg.titles + svg.descriptions
+        if element.element_id
+    }
+    for element_id in sorted(naming_ids):
+        locations = parser.id_locations[element_id]
+        if len(locations) > 1:
+            line, offset = locations[1]
+            add(line, offset, f'duplicate accessible-name id="{element_id}" is not allowed')
+
     for svg in parser.svgs:
         aria_hidden = (svg.attrs.get("aria-hidden") or "").casefold()
         if aria_hidden == "true":
@@ -183,6 +199,25 @@ def lint_accessible_svgs(text):
             add(svg.line, svg.offset, 'diagram <svg> must carry role="img"')
 
         labelled_by = (svg.attrs.get("aria-labelledby") or "").split()
+        accessible_name_ids = labelled_by + [
+            element.element_id
+            for element in svg.titles + svg.descriptions
+            if element.element_id
+        ]
+        placeholder_ids = list(
+            dict.fromkeys(
+                element_id
+                for element_id in accessible_name_ids
+                if "[" in element_id or "]" in element_id
+            )
+        )
+        if placeholder_ids:
+            add(
+                svg.line,
+                svg.offset,
+                "accessible-name IDs contain unresolved placeholder(s): "
+                + ", ".join(placeholder_ids),
+            )
         if not labelled_by:
             add(
                 svg.line,
@@ -421,18 +456,15 @@ def main():
     colors, rgb_triplets = allowed_colors()
 
     skipped = 0
+    baseline = set()
     if args.all:
         paths = sorted(ASSET_DIR.glob("example-*.html"))
         if args.baseline:
             baseline = load_baseline()
-            selected = []
             for path in paths:
                 relative = display_path(path)
                 if path.name in baseline or relative in baseline:
                     skipped += 1
-                else:
-                    selected.append(path)
-            paths = selected
     else:
         paths = args.files
 
@@ -440,7 +472,11 @@ def main():
     for path in paths:
         try:
             text = path.read_text(encoding="utf-8")
-            findings = lint_text(text, colors, rgb_triplets)
+            relative = display_path(path)
+            if args.baseline and (path.name in baseline or relative in baseline):
+                findings = lint_accessible_svgs(text)
+            else:
+                findings = lint_text(text, colors, rgb_triplets)
         except OSError as error:
             findings = [(0, 0, "read-error", str(error))]
 
