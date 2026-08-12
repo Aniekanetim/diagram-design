@@ -22,7 +22,9 @@
 
     <!-- X: 0-20 deploys/week → 880px. x = 80 + f/20*880 = 80+44*f -->
     <!-- Y: 0-24 days lead time → 380px. y = 420 - lt/24*380. High lt = high y (worse) -->
-    <svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="scatter-title scatter-desc">
+      <title id="scatter-title">Deploy frequency vs. lead time · 12 teams</title>
+      <desc id="scatter-desc">Scatter plot showing twelve engineering teams by deploy frequency and lead time, with Platform in the best-performing quadrant.</desc>
       <defs>
         <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
