@@ -181,7 +181,54 @@ A --> B; B --> C
         ("B", "C"),
     ]:
         fail("semicolon-separated flowchart statements were not split")
+
+    labeled_file = tmp / "labeled-links.mmd"
+    labeled_file.write_text(
+        """flowchart LR
+A[Start]:::warning --> B
+B -. retry .-> C
+C == critical ==> D
+D:::danger --- E
+""",
+        encoding="utf-8",
+    )
+    labeled = json.loads(run_extract([str(labeled_file), "--json"]))["diagrams"][0]
+    ids = [node["id"] for node in labeled["nodes"]]
+    if ids != ["A", "B", "C", "D", "E"]:
+        fail(f"`:::class` suffixes leaked into node ids: {ids}")
+    if labeled["nodes"][0]["label"] != "Start":
+        fail("shaped node with a class suffix lost its label")
+    dotted, thick = labeled["edges"][1], labeled["edges"][2]
+    if dotted["label"] != "retry" or dotted["style"] != "dashed":
+        fail("labeled dotted link did not retain its label and dashed style")
+    if thick["label"] != "critical" or thick["style"] != "thick":
+        fail("labeled thick link did not retain its label and thick style")
     ok("documented shape families and edge forms normalize")
+
+
+def check_frontmatter(tmp: Path) -> None:
+    front_file = tmp / "frontmatter.mmd"
+    front_file.write_text(
+        """---
+title: Checkout
+config:
+  theme: forest
+---
+flowchart LR
+A --> B
+""",
+        encoding="utf-8",
+    )
+    digest = run_extract([str(front_file)])
+    if "direction: LR" not in digest or "[0] flowchart (2n/1e)" not in digest:
+        fail("leading Mermaid frontmatter was not skipped before grammar detection")
+    if "Checkout" in digest or "forest" in digest:
+        fail("frontmatter config leaked into the digest")
+
+    unterminated = tmp / "unterminated-frontmatter.mmd"
+    unterminated.write_text("---\ntitle: Broken\nflowchart LR\nA --> B\n", encoding="utf-8")
+    expect_error([str(unterminated)], "not a Mermaid file")
+    ok("frontmatter is skipped, and an unterminated block still fails specifically")
 
 
 def check_markdown_and_grammars(tmp: Path) -> None:
@@ -480,6 +527,7 @@ def main() -> int:
         check_files()
         check_flowchart()
         check_shape_and_edge_vocabulary(tmp)
+        check_frontmatter(tmp)
         check_markdown_and_grammars(tmp)
         check_adversarial(tmp)
         check_errors_and_limits(tmp)

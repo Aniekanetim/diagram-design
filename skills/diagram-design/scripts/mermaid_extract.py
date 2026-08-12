@@ -253,12 +253,37 @@ def load_blocks(path: Path) -> list[SourceBlock]:
     return blocks
 
 
+FRONTMATTER_MAX_LINES = 40
+
+
+def _frontmatter_end(lines: list[str]) -> int:
+    """Return the last line index of a leading `---` frontmatter block, or -1."""
+    first = next(
+        (index for index, line in enumerate(lines) if line.strip()),
+        None,
+    )
+    if first is None or lines[first].strip() != "---":
+        return -1
+    limit = min(len(lines), first + FRONTMATTER_MAX_LINES + 1)
+    for index in range(first + 1, limit):
+        if lines[index].strip() == "---":
+            return index
+    return -1
+
+
 def _prepared_lines(block: SourceBlock) -> list[tuple[int, str]]:
     prepared: list[tuple[int, str]] = []
     in_directive = False
-    for offset, raw in enumerate(block.text.splitlines()):
+    lines = block.text.splitlines()
+    frontmatter_end = _frontmatter_end(lines)
+    for offset, raw in enumerate(lines):
         line_number = block.source_line + offset
         stripped = raw.strip()
+        if offset <= frontmatter_end:
+            # Mermaid's `--- title: ... ---` frontmatter is source config; the
+            # redraw discards it the same way it discards `%%{init}%%`.
+            prepared.append((line_number, ""))
+            continue
         if in_directive:
             if "}%%" in stripped:
                 in_directive = False
@@ -373,8 +398,20 @@ def classify_shape(expression: str) -> str:
     return "rect"
 
 
+def _strip_class_suffix(text: str) -> str:
+    """Drop Mermaid's `:::class` attachment; source styling is discarded."""
+    mask = _top_level_mask(text)
+    index = mask.find(":::")
+    if index == -1:
+        return text
+    end = index + 3
+    while end < len(text) and (text[end].isalnum() or text[end] in "_-"):
+        end += 1
+    return (text[:index] + text[end:]).strip()
+
+
 def _parse_node_expression(expression: str) -> tuple[str, str, str] | None:
-    text = expression.strip().rstrip(";").strip()
+    text = _strip_class_suffix(expression.strip().rstrip(";").strip())
     if not text:
         return None
     match = re.match(r"^([\w.:-]+)", text, re.UNICODE)
@@ -415,7 +452,12 @@ def _edge_operators(text: str) -> list[_Operator]:
     operators: list[_Operator] = []
     occupied: list[tuple[int, int]] = []
 
-    text_edge = re.compile(r"--\s+(.+?)\s+(-{2,}>|--[xo])")
+    # Labeled links carry the label between the opening and closing operator:
+    # `A-- text -->B`, `A-. retry .-> B`, `A== critical ==> B`, and the
+    # undirected forms of each.
+    text_edge = re.compile(
+        r"(?:--|-\.|==)\s+(.+?)\s+(\.-+[>xo]|\.-+|-{2,}>|--[xo]|=+>|={2,}|-{3,})"
+    )
     for match in text_edge.finditer(mask):
         token = match.group(2)
         style, arrowhead, bidirectional, undirected = _operator_style(token)
