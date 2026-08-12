@@ -114,6 +114,10 @@
         color: var(--ink);
         border-color: var(--rule-strong);
       }
+      .tab:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
       .tab.active {
         background: var(--ink);
         color: var(--paper);
@@ -278,6 +282,24 @@
         <button class="tab new" data-type="it-state">
           <span class="eyebrow">33</span>IT current-state
         </button>
+        <button class="tab new" data-type="sequence-oauth">
+          <span class="eyebrow">34</span>Sequence · OAuth
+        </button>
+        <button class="tab new" data-type="import-drawio" data-single>
+          <span class="eyebrow">35</span>Import · draw.io
+        </button>
+        <button class="tab new" data-type="import-mermaid" data-single>
+          <span class="eyebrow">36</span>Import · Mermaid
+        </button>
+        <button class="tab new" data-type="quadrant-consultant" data-single>
+          <span class="eyebrow">37</span>Quadrant · consultant
+        </button>
+        <button class="tab new" data-type="loop-terminal" data-single>
+          <span class="eyebrow">38</span>Loop · terminal
+        </button>
+        <button class="tab new" data-type="policy-trace-animated" data-single>
+          <span class="eyebrow">39</span>Policy trace · animated
+        </button>
       </div>
 
       <div
@@ -306,6 +328,14 @@
       const openRaw = document.getElementById("open-raw");
 
       function update() {
+        const activeType = document.querySelector("#type-tabs .tab.active");
+        const single = activeType && activeType.hasAttribute("data-single");
+        const variantTabs = document.querySelectorAll("#variant-tabs .tab");
+        if (single) state.variant = "";
+        variantTabs.forEach((tab) => {
+          tab.disabled = single && tab.dataset.variant !== "";
+          tab.classList.toggle("active", tab.dataset.variant === state.variant);
+        });
         const src = `example-${state.type}${state.variant}.html`;
         iframe.src = src;
         openRaw.href = src;
