@@ -29,6 +29,9 @@ jobs:
       - name: Verify accessible SVG contract
         run: python3 scripts/test-lint-a11y.py
 
+      - name: Verify Devicon normalization
+        run: python3 scripts/test-build-icons-devicon.py
+
       - name: Verify mojibake repair utility
         run: python3 scripts/test-fix-mojibake.py
 
