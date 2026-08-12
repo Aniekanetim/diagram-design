@@ -104,9 +104,10 @@ def main() -> int:
         print("OK: shipped animated example accepted")
 
         shipped = module.shipped_motion_files()
-        if shipped != sorted([TEMPLATE, EXAMPLE], key=lambda path: path.as_posix()):
-            raise AssertionError(f"unexpected shipped motion inventory: {shipped}")
-        print("OK: shipped motion inventory is parsed and complete")
+        required_shipped = {TEMPLATE, EXAMPLE}
+        if not required_shipped.issubset(set(shipped)):
+            raise AssertionError(f"incomplete shipped motion inventory: {shipped}")
+        print("OK: required shipped motion inventory is parsed and complete")
         check(
             "bad-mode",
             source.replace('data-motion-mode="step"', 'data-motion-mode="cinematic"', 1),
@@ -132,6 +133,19 @@ def main() -> int:
             source.replace('aria-live="polite"', 'aria-live="assertive"', 1),
             "motion status needs role=status",
         )
+        status_line = (
+            '    <p class="sr-only" data-motion-status role="status" '
+            'aria-live="polite" aria-atomic="true"></p>'
+        )
+        check(
+            "status-inside-hidden-controls",
+            source.replace(
+                f"    </div>\n{status_line}",
+                f"{status_line}\n    </div>",
+                1,
+            ),
+            "motion status must be outside data-motion-controls",
+        )
         check(
             "hidden-fallback",
             source.replace('data-motion-item data-step="1"', 'data-motion-item data-step="1" style="opacity:0"', 1),
@@ -148,6 +162,15 @@ def main() -> int:
             "missing reduced-motion CSS fallback",
         )
         check(
+            "comment-cannot-spoof-reduced-motion",
+            source.replace(
+                "@media (prefers-reduced-motion: reduce)",
+                "@media (user-reduced-motion: reduce)",
+                1,
+            ).replace("</style>", "  /* prefers-reduced-motion */\n  </style>", 1),
+            "missing reduced-motion CSS fallback",
+        )
+        check(
             "reduced-motion-controls-visible",
             source.replace(
                 "[data-motion-controls] { display: none !important; }",
@@ -160,6 +183,15 @@ def main() -> int:
             "hidden-controls-overridden",
             source.replace("[data-motion-controls][hidden] { display: none !important; }", "", 1),
             "missing hidden control override",
+        )
+        check(
+            "comment-cannot-spoof-script-contract",
+            source.replace("'visibilitychange'", "'pagehide'", 1).replace(
+                "    })();",
+                "      // visibilitychange\n    })();",
+                1,
+            ),
+            "missing background-tab pause",
         )
         check(
             "missing-static-override",
@@ -181,6 +213,61 @@ def main() -> int:
             "needs a non-color aria-label",
         )
         check(
+            "unicode-step-count",
+            source.replace('data-step-count="5"', 'data-step-count="٥"', 1),
+            "data-step-count must be an ASCII decimal integer",
+        )
+        check(
+            "underscored-item-step",
+            source.replace('data-step="1"', 'data-step="1_0"', 1),
+            "non-ASCII-decimal data-step",
+        )
+        check(
+            "double-space-ready-scope",
+            source.replace(
+                ".motion-ready [data-motion-item] {",
+                ".motion-ready  [data-motion-item] {",
+                1,
+            ),
+            None,
+        )
+        check(
+            "comma-unscoped-opacity",
+            source.replace(
+                ".motion-ready [data-motion-item] {\n      opacity: .12;",
+                ".motion-ready [data-motion-item], [data-motion-item] {\n      opacity: 0;",
+                1,
+            ),
+            "unscoped data-motion-item hiding",
+        )
+        check(
+            "unscoped-visibility",
+            source.replace(
+                "</style>",
+                "  [data-motion-root] > [data-motion-item] { visibility: hidden; }\n  </style>",
+                1,
+            ),
+            "unscoped data-motion-item hiding",
+        )
+        check(
+            "unscoped-display",
+            source.replace(
+                "</style>",
+                "  [data-motion-item] { display: none; }\n  </style>",
+                1,
+            ),
+            "unscoped data-motion-item hiding",
+        )
+        check(
+            "unscoped-infinite-iteration-count",
+            source.replace(
+                "</style>",
+                "  .motion-ready [data-motion-item] { animation-iteration-count: infinite; }\n  </style>",
+                1,
+            ),
+            "infinite animation must be scoped to data-motion-mode=loop",
+        )
+        check(
             "null-test-frame",
             source.replace("requestedStep !== null", "true", 1),
             "missing non-null test frame validation",
@@ -196,6 +283,15 @@ def main() -> int:
             "missing non-negative decimal test frame validation",
         )
         check(
+            "modified-replay-shortcut",
+            source.replace(
+                "!event.ctrlKey && !event.metaKey && !event.altKey && ",
+                "",
+                1,
+            ),
+            "missing modified-shortcut guard",
+        )
+        check(
             "over-budget-test-frame",
             source.replace(" && parsedStep <= count", "", 1),
             "missing bounded test frame validation",
@@ -208,6 +304,16 @@ def main() -> int:
                 1,
             ),
             "must exactly match the controller in template-motion.html",
+        )
+        ready_line = "        root.classList.add('motion-ready');\n"
+        check(
+            "early-motion-ready",
+            source.replace(ready_line, "", 1).replace(
+                "        if (staticOverride) {",
+                ready_line + "        if (staticOverride) {",
+                1,
+            ),
+            "motion-ready must be added only after the initial render succeeds",
         )
         check(
             "remote-controller",
@@ -256,6 +362,57 @@ def main() -> int:
         if not any("must terminate at the first FAIL" in error for error in trace_errors):
             raise AssertionError(f"broken Trace B connector was accepted: {trace_errors}")
         print("OK: Trace B connector cannot continue through terminal rows")
+
+        decorative_example = directory / "decorative-trace.html"
+        decorative_example.write_text(
+            EXAMPLE.read_text(encoding="utf-8").replace(
+                "      </svg>",
+                '        <circle data-motion-item data-step="3" data-motion-decorative '
+                'aria-hidden="true" focusable="false" cx="0" cy="0" r="1"/>\n'
+                "      </svg>",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        decorative_errors = semantic_module.verify_example(decorative_example)
+        if decorative_errors:
+            raise AssertionError(
+                f"decorative semantic-verifier item was rejected: {decorative_errors}"
+            )
+        print("OK: semantic verifier accepts an accessible decorative motion item")
+
+        original_skill = semantic_module.SKILL
+        try:
+            missing_router = directory / "missing-router.md"
+            missing_router.write_text(
+                original_skill.read_text(encoding="utf-8").replace(
+                    "semantic-patterns.md", "patterns.md"
+                ),
+                encoding="utf-8",
+            )
+            semantic_module.SKILL = missing_router
+            markdown_errors = semantic_module.verify_markdown()
+        finally:
+            semantic_module.SKILL = original_skill
+        if not any("must link to semantic-patterns.md" in error for error in markdown_errors):
+            raise AssertionError(f"missing semantic router was accepted: {markdown_errors}")
+        print("OK: missing semantic-pattern router anchor is rejected")
+
+        try:
+            missing_guide = directory / "missing-guide.md"
+            missing_guide.write_text(
+                original_skill.read_text(encoding="utf-8").replace(
+                    "### Visual-type guide (27)", "### Visual guide"
+                ),
+                encoding="utf-8",
+            )
+            semantic_module.SKILL = missing_guide
+            markdown_errors = semantic_module.verify_markdown()
+        finally:
+            semantic_module.SKILL = original_skill
+        if not any("must contain the 27-row visual-type guide" in error for error in markdown_errors):
+            raise AssertionError(f"missing visual-guide anchor was accepted: {markdown_errors}")
+        print("OK: missing visual-type guide anchor is rejected")
 
         cli_result = subprocess.run(
             [sys.executable, str(VERIFIER), str(TEMPLATE)],

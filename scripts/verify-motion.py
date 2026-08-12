@@ -15,6 +15,7 @@ ASSET_DIR = ROOT / "skills/diagram-design/assets"
 MOTION_TEMPLATE = ASSET_DIR / "template-motion.html"
 MODES = {"none", "reveal", "step", "loop"}
 ACTIONS = {"play", "pause", "replay", "prev", "next"}
+ASCII_DECIMAL_RE = re.compile(r"^[0-9]+$")
 
 
 class MotionParser(HTMLParser):
@@ -25,14 +26,18 @@ class MotionParser(HTMLParser):
         self.actions: set[str] = set()
         self.controls = 0
         self.statuses: list[dict[str, str]] = []
+        self.statuses_in_controls = 0
         self.scripts: list[dict[str, object]] = []
+        self.styles: list[dict[str, object]] = []
         self.svgs: list[dict[str, object]] = []
         self._svg_depth = 0
         self._current_svg: dict[str, object] | None = None
         self._capture: str | None = None
         self._current_script: dict[str, object] | None = None
+        self._current_style: dict[str, object] | None = None
         self._element_stack: list[str] = []
         self._motion_root_depth: int | None = None
+        self._controls_depth: int | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.casefold()
@@ -48,10 +53,14 @@ class MotionParser(HTMLParser):
                 self.items.append(data)
             if "data-motion-action" in data:
                 self.actions.add(data["data-motion-action"])
-            if "data-motion-status" in data:
-                self.statuses.append(data)
             if "data-motion-controls" in data:
                 self.controls += 1
+                if self._controls_depth is None:
+                    self._controls_depth = len(self._element_stack)
+            if "data-motion-status" in data:
+                self.statuses.append(data)
+                if self._controls_depth is not None:
+                    self.statuses_in_controls += 1
         if tag == "script":
             self._current_script = {
                 "attrs": data,
@@ -60,6 +69,9 @@ class MotionParser(HTMLParser):
                 "closed": False,
             }
             self.scripts.append(self._current_script)
+        if tag == "style":
+            self._current_style = {"body": [], "closed": False}
+            self.styles.append(self._current_style)
         self._element_stack.append(tag)
         if tag == "svg":
             self._svg_depth = 1
@@ -80,6 +92,9 @@ class MotionParser(HTMLParser):
         if tag == "script" and self._current_script is not None:
             self._current_script["closed"] = True
             self._current_script = None
+        if tag == "style" and self._current_style is not None:
+            self._current_style["closed"] = True
+            self._current_style = None
         if self._svg_depth:
             if tag in {"title", "desc"}:
                 self._capture = None
@@ -95,10 +110,19 @@ class MotionParser(HTMLParser):
             and len(self._element_stack) <= self._motion_root_depth
         ):
             self._motion_root_depth = None
+        if (
+            self._controls_depth is not None
+            and len(self._element_stack) <= self._controls_depth
+        ):
+            self._controls_depth = None
 
     def handle_data(self, data: str) -> None:
         if self._current_script is not None:
             body = self._current_script["body"]
+            assert isinstance(body, list)
+            body.append(data)
+        if self._current_style is not None:
+            body = self._current_style["body"]
             assert isinstance(body, list)
             body.append(data)
         if self._capture and self._current_svg:
@@ -116,6 +140,111 @@ def parsed_document(source: str) -> MotionParser:
     parser.feed(source)
     parser.close()
     return parser
+
+
+def without_comments(source: str) -> str:
+    """Remove JS/CSS comments while preserving quoted strings and regex literals."""
+    output: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(source):
+        character = source[index]
+        following = source[index + 1] if index + 1 < len(source) else ""
+        if quote is not None:
+            output.append(character)
+            if character == "\\" and index + 1 < len(source):
+                index += 1
+                output.append(source[index])
+            elif character == quote:
+                quote = None
+        elif character in {"'", '"', "`"}:
+            quote = character
+            output.append(character)
+        elif character == "/" and following == "*":
+            index += 2
+            while index < len(source) - 1 and source[index : index + 2] != "*/":
+                if source[index] in "\r\n":
+                    output.append(source[index])
+                index += 1
+            index += 1
+        elif character == "/" and following == "/":
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+            if index < len(source):
+                output.append(source[index])
+        else:
+            output.append(character)
+        index += 1
+    return "".join(output)
+
+
+def parsed_bodies(blocks: list[dict[str, object]]) -> str:
+    bodies = []
+    for block in blocks:
+        body = block["body"]
+        assert isinstance(body, list)
+        bodies.append("".join(body))
+    return without_comments("\n".join(bodies))
+
+
+def css_at_rule_blocks(source: str, header_pattern: str) -> list[str]:
+    """Return balanced bodies for CSS at-rules whose headers match a pattern."""
+    blocks: list[str] = []
+    for match in re.finditer(header_pattern + r"\s*\{", source, re.IGNORECASE):
+        depth = 1
+        index = match.end()
+        start = index
+        while index < len(source) and depth:
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+            index += 1
+        if depth == 0:
+            blocks.append(source[start : index - 1])
+    return blocks
+
+
+def hidden_unscoped_motion_selectors(source: str) -> list[str]:
+    """Find selectors that hide motion items before progressive enhancement."""
+    hidden_declaration = re.compile(
+        r"(?:opacity\s*:\s*(?:0+(?:\.0*)?|\.0+)\b|"
+        r"visibility\s*:\s*hidden\b|display\s*:\s*none\b)",
+        re.IGNORECASE,
+    )
+    findings: list[str] = []
+    for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", source, re.DOTALL):
+        if not hidden_declaration.search(rule.group(2)):
+            continue
+        for selector in rule.group(1).split(","):
+            item = re.search(r"\[\s*data-motion-item\s*\]", selector, re.IGNORECASE)
+            if item is None:
+                continue
+            if ".motion-ready" not in selector[: item.start()]:
+                findings.append(" ".join(selector.split()))
+    return findings
+
+
+def infinite_unscoped_selectors(source: str) -> list[str]:
+    """Find infinite animation rules that are not limited to loop mode."""
+    infinite_declaration = re.compile(
+        r"(?:animation\s*:[^;}]*\binfinite\b|"
+        r"animation-iteration-count\s*:\s*infinite\b)",
+        re.IGNORECASE,
+    )
+    loop_scope = re.compile(
+        r"\[\s*data-motion-mode\s*=\s*['\"]loop['\"]\s*\]",
+        re.IGNORECASE,
+    )
+    findings: list[str] = []
+    for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", source, re.DOTALL):
+        if not infinite_declaration.search(rule.group(2)):
+            continue
+        for selector in rule.group(1).split(","):
+            if loop_scope.search(selector) is None:
+                findings.append(" ".join(selector.split()))
+    return findings
 
 
 def canonical_controller() -> str:
@@ -160,11 +289,12 @@ def verify(path: Path) -> list[str]:
     mode = root.get("data-motion-mode", "")
     if mode not in MODES:
         errors.append(f"data-motion-mode must be one of {sorted(MODES)}; got {mode!r}")
-    try:
-        count = int(root.get("data-step-count", ""))
-    except ValueError:
+    raw_count = root.get("data-step-count", "")
+    if not ASCII_DECIMAL_RE.fullmatch(raw_count):
         count = -1
-        errors.append("data-step-count must be an integer")
+        errors.append("data-step-count must be an ASCII decimal integer")
+    else:
+        count = int(raw_count)
     minimum_count = 0 if mode == "none" else 1
     if count < minimum_count or count > 8:
         errors.append(f"semantic step count must be {minimum_count}..8; got {count}")
@@ -174,11 +304,13 @@ def verify(path: Path) -> list[str]:
     steps: list[int] = []
     semantic_steps: list[int] = []
     for index, item in enumerate(parser.items, 1):
-        try:
-            step = int(item.get("data-step", ""))
-        except ValueError:
-            errors.append(f"motion item {index} has a non-integer data-step")
+        raw_step = item.get("data-step", "")
+        if not ASCII_DECIMAL_RE.fullmatch(raw_step):
+            errors.append(
+                f"motion item {index} has a non-ASCII-decimal data-step"
+            )
             continue
+        step = int(raw_step)
         steps.append(step)
         decorative = "data-motion-decorative" in item
         if not decorative:
@@ -214,6 +346,10 @@ def verify(path: Path) -> list[str]:
             status = parser.statuses[0]
             if status.get("role") != "status" or status.get("aria-live") != "polite" or status.get("aria-atomic") != "true":
                 errors.append("motion status needs role=status, aria-live=polite, aria-atomic=true")
+            if parser.statuses_in_controls:
+                errors.append(
+                    "motion status must be outside data-motion-controls so hidden controls do not hide live announcements"
+                )
         if not parser.scripts:
             errors.append("controlled mode needs the scoped control script")
 
@@ -248,20 +384,52 @@ def verify(path: Path) -> list[str]:
                 f"script {number} must exactly match the controller in template-motion.html"
             )
 
-    required_source = {
-        "prefers-reduced-motion": "reduced-motion CSS fallback",
-        "@media print": "print CSS fallback",
+    script_source = parsed_bodies(parser.scripts)
+    style_source = parsed_bodies(parser.styles)
+    reduced_motion_css = "\n".join(
+        css_at_rule_blocks(
+            style_source,
+            r"@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)",
+        )
+    )
+    print_css = css_at_rule_blocks(style_source, r"@media\s+print\b")
+
+    if not reduced_motion_css:
+        errors.append("missing reduced-motion CSS fallback (prefers-reduced-motion)")
+    if not print_css:
+        errors.append("missing print CSS fallback (@media print)")
+
+    required_css = {
+        r"\[data-motion-controls\]\s*\{[^{}]*display\s*:\s*none\s*!important": (
+            reduced_motion_css,
+            "reduced-motion hidden controls",
+            "[data-motion-controls] { display: none !important; }",
+        ),
+        r"\[data-motion-controls\]\[hidden\]\s*\{[^{}]*display\s*:\s*none\s*!important": (
+            style_source,
+            "hidden control override",
+            "[data-motion-controls][hidden] { display: none !important; }",
+        ),
+        r"html\[data-motion\s*=\s*['\"]static['\"]\]": (
+            style_source,
+            "deterministic static override",
+            'data-motion="static"',
+        ),
     }
     if parser.scripts:
-        required_source.update(
+        for pattern, (scope, label, example) in required_css.items():
+            if re.search(pattern, scope, re.IGNORECASE | re.DOTALL) is None:
+                errors.append(f"missing {label} ({example})")
+
+    required_script: dict[str, str] = {}
+    if parser.scripts:
+        required_script.update(
             {
-                "[data-motion-controls] { display: none !important; }": "reduced-motion hidden controls",
-                "[data-motion-controls][hidden] { display: none !important; }": "hidden control override",
-                'data-motion="static"': "deterministic static override",
                 "motion') === 'step'": "deterministic step override",
                 "document.fonts": "font-stable screenshot hook",
                 "visibilitychange": "background-tab pause",
                 "ArrowRight": "keyboard stepping",
+                "!event.ctrlKey && !event.metaKey && !event.altKey": "modified-shortcut guard",
                 "motion-ready": "progressive enhancement class",
                 "requestedStep !== null": "non-null test frame validation",
                 "/^\\d+$/.test(requestedStep)": "non-negative decimal test frame validation",
@@ -271,14 +439,31 @@ def verify(path: Path) -> list[str]:
                 "playback controls unavailable": "static/reduced-motion status",
             }
         )
-    for needle, label in required_source.items():
-        if needle not in source:
+    for needle, label in required_script.items():
+        if needle not in script_source:
             errors.append(f"missing {label} ({needle})")
+    ready_position = script_source.find("root.classList.add('motion-ready');")
+    initialization_position = script_source.find("if (staticOverride)")
+    if (
+        parser.scripts
+        and ready_position >= 0
+        and initialization_position >= 0
+        and ready_position < initialization_position
+    ):
+        errors.append("motion-ready must be added only after the initial render succeeds")
 
-    if re.search(r"(?<!motion-ready)\s\[data-motion-item\]\s*\{[^}]*opacity\s*:\s*0", source, re.S):
-        errors.append("unscoped data-motion-item opacity:0 breaks the no-JS fallback")
-    if mode != "loop" and re.search(r"animation\s*:[^;}]*\binfinite\b", source):
-        errors.append("only loop mode may declare an infinite animation shorthand")
+    unscoped_selectors = hidden_unscoped_motion_selectors(style_source)
+    if unscoped_selectors:
+        errors.append(
+            "unscoped data-motion-item hiding breaks the no-JS fallback: "
+            + ", ".join(unscoped_selectors)
+        )
+    infinite_selectors = infinite_unscoped_selectors(style_source)
+    if infinite_selectors:
+        errors.append(
+            "infinite animation must be scoped to data-motion-mode=loop: "
+            + ", ".join(infinite_selectors)
+        )
     if mode == "loop" and len(parser.items) > 2:
         errors.append("loop mode may contain at most one semantic item and one decorative token")
 

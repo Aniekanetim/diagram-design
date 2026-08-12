@@ -309,7 +309,7 @@ class AccessibleSvgParser(HTMLParser):
             element.text.append(data)
 
 
-def lint_accessible_svgs(text, expected_slug):
+def lint_accessible_svgs(text, expected_slug, allow_template_placeholders=False):
     parser = AccessibleSvgParser(text)
     parser.feed(text)
     parser.close()
@@ -352,7 +352,11 @@ def lint_accessible_svgs(text, expected_slug):
                 if "[" in element_id or "]" in element_id
             )
         )
-        if placeholder_ids:
+        allowed_placeholders = {"[diagram-slug]-title", "[diagram-slug]-desc"}
+        if placeholder_ids and (
+            not allow_template_placeholders
+            or not set(placeholder_ids).issubset(allowed_placeholders)
+        ):
             add(
                 svg.line,
                 svg.offset,
@@ -499,8 +503,12 @@ def named_families(value, allowed_fonts):
     return families
 
 
-def lint_text(text, colors, rgb_triplets, expected_slug):
-    findings = lint_accessible_svgs(text, expected_slug)
+def lint_text(
+    text, colors, rgb_triplets, expected_slug, allow_template_placeholders=False
+):
+    findings = lint_accessible_svgs(
+        text, expected_slug, allow_template_placeholders
+    )
     allowed_fonts = ALLOWED_FONTS | style_guide_families()
 
     resources = ResourceParser()
@@ -654,7 +662,7 @@ def parse_args():
     parser.add_argument(
         "--all",
         action="store_true",
-        help="lint every skills/diagram-design/assets/example-*.html file",
+        help="lint every skills/diagram-design/assets/example-*.html and template*.html file",
     )
     parser.add_argument(
         "--baseline",
@@ -677,7 +685,10 @@ def main():
     skipped = 0
     baseline = set()
     if args.all:
-        paths = sorted(ASSET_DIR.glob("example-*.html"))
+        paths = sorted(
+            set(ASSET_DIR.glob("example-*.html"))
+            | set(ASSET_DIR.glob("template*.html"))
+        )
         if args.baseline:
             baseline = load_baseline()
             for path in paths:
@@ -693,10 +704,19 @@ def main():
             text = path.read_text(encoding="utf-8")
             relative = display_path(path)
             expected_slug = diagram_slug(path)
+            allow_template_placeholders = path.name.startswith("template")
             if args.baseline and (path.name in baseline or relative in baseline):
-                findings = lint_accessible_svgs(text, expected_slug)
+                findings = lint_accessible_svgs(
+                    text, expected_slug, allow_template_placeholders
+                )
             else:
-                findings = lint_text(text, colors, rgb_triplets, expected_slug)
+                findings = lint_text(
+                    text,
+                    colors,
+                    rgb_triplets,
+                    expected_slug,
+                    allow_template_placeholders,
+                )
         except OSError as error:
             findings = [(0, 0, "read-error", str(error))]
 

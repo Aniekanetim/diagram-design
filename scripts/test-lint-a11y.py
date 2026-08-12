@@ -436,6 +436,13 @@ def main() -> int:
         (project / "skills/diagram-design/assets/example-baseline.html").write_text(
             '<svg style="color: #123456"></svg>\n', encoding="utf-8"
         )
+        template_svg = VALID_SVG.replace(
+            "fixture-title", "[diagram-slug]-title"
+        ).replace("fixture-desc", "[diagram-slug]-desc")
+        (project / "skills/diagram-design/assets/template.html").write_text(
+            '<img src="https://evil.example/template.png">\n' + template_svg,
+            encoding="utf-8",
+        )
         baseline_result = subprocess.run(
             [
                 sys.executable,
@@ -463,7 +470,18 @@ def main() -> int:
                 "baseline-a11y: legacy visual finding was not exempted\n"
                 f"{baseline_result.stdout}"
             )
+        if "external-asset: external resource in <img> src is not allowed" not in baseline_result.stdout:
+            raise AssertionError(
+                "template-scan: --all did not lint template HTML\n"
+                f"{baseline_result.stdout}"
+            )
+        if "unresolved placeholder" in baseline_result.stdout:
+            raise AssertionError(
+                "template-scan: canonical template placeholders were rejected\n"
+                f"{baseline_result.stdout}"
+            )
         print("OK: baseline file receives a11y checks but keeps visual exemptions")
+        print("OK: --all scans templates and permits canonical slug placeholders")
 
     print("All accessible-SVG lint cases passed.")
     return 0

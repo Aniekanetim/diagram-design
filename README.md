@@ -20,7 +20,7 @@ No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
 I write at [littlemight.com](https://littlemight.com?utm_source=diagram-design&utm_medium=readme&utm_campaign=github&utm_content=intro) (and run [BestSelf.co](https://bestself.co?utm_source=diagram-design&utm_medium=readme&utm_campaign=github&utm_content=intro) on the side). Every time I needed a diagram — an architecture sketch, a flowchart, a pyramid of what matters most — I'd ask Claude and get back a generic rounded-box thing that looked nothing like the rest of the site. I'd either fight with Figma for 30 minutes or just skip the diagram.
 
-So I built a Claude Code skill for it. Twenty-seven types, editorial quality, matches your brand in 60 seconds by reading your website.
+So I built a Claude Code skill for it. Twenty-seven visual types, editorial quality, matches your brand in 60 seconds by reading your website.
 
 > *The highest-quality move is usually deletion.* Every node earns its place. The accent color is reserved for the 1–2 things the reader should look at first. Target density: 4/10.
 
@@ -28,7 +28,7 @@ So I built a Claude Code skill for it. Twenty-seven types, editorial quality, ma
 
 ## What it makes
 
-All 27 diagrams ship in three static variants: minimal light, minimal dark, and full-editorial. Open any of them directly in a browser. There is no build step, JavaScript, or external image dependency.
+All 27 visual types ship in three static variants: minimal light, minimal dark, and full-editorial. Open any of them directly in a browser. There is no build step, JavaScript, or external image dependency.
 
 <table>
 <tr>
@@ -208,13 +208,14 @@ Your agent will pick the right type, build the HTML, and save it. You can also s
 ```bash
 cp skills/diagram-design/assets/template.html my-diagram.html        # minimal light
 cp skills/diagram-design/assets/template-full.html my-diagram.html   # editorial with summary cards
+cp skills/diagram-design/assets/template-motion.html my-diagram.html # optional accessible motion
 ```
 
 ### Semantic patterns and optional motion
 
 When behavior matters, the skill chooses a semantic pattern first and a visual type second. The seven routed patterns cover fan-in queues and bottlenecks, repeated stage slots, unstructured-input transformation, paired policy traces, secure paved roads, governance catalogs, and compensating security layers. Each pattern defines its triggers, primitives, budget, anti-patterns, static fallback, and nearest visual type in [`semantic-patterns.md`](skills/diagram-design/references/semantic-patterns.md).
 
-Motion is optional and does not create another diagram type. [`animation.md`](skills/diagram-design/references/animation.md) defines `none`, `reveal`, `step`, and `loop` modes with a complete static first frame, deterministic timing, and controls when interaction is available. Reduced-motion output shows the complete static frame and hides/disables playback controls. Motion HTML uses the exact reviewed controller from `template-motion.html`; arbitrary inline scripts are rejected. The default is `none`: ordinary output remains static and script-free. [`example-policy-trace-animated.html`](skills/diagram-design/assets/example-policy-trace-animated.html) is the self-contained interactive example.
+Motion is optional and does not create another visual type. [`animation.md`](skills/diagram-design/references/animation.md) defines `none`, `reveal`, `step`, and `loop` modes with a complete static first frame, deterministic timing, and controls when interaction is available. Reduced-motion output shows the complete static frame and hides/disables playback controls. Motion HTML uses the exact reviewed controller from `template-motion.html`; arbitrary or modified inline scripts, remote assets, CSS imports, and executable HTML attributes are rejected. The default is `none`: ordinary output remains static and script-free. [`example-policy-trace-animated.html`](skills/diagram-design/assets/example-policy-trace-animated.html) is the self-contained interactive example.
 
 ---
 
@@ -295,6 +296,8 @@ Or just ask in natural language:
 
 Both formats are diagram-only — editorial cards and headers from `-full` variants aren't included. For a screenshot of the full editorial layout, use your browser's print-to-PDF or full-page screenshot. See [`skills/diagram-design/references/export.md`](skills/diagram-design/references/export.md) for the full procedure.
 
+For motion-enabled HTML, export the explicit final state: open `?motion=static`, wait for `document.fonts.ready`, and confirm the motion root has `data-frame="static"` before capture. Use `?motion=step&step=N` only when a named intermediate frame was requested.
+
 ---
 
 ## Architecture
@@ -364,10 +367,10 @@ This keeps the agent's working context tight: routine diagrams load one type ref
 ### Contributing / skin lint
 
 Before submitting a new example, run `python3 scripts/lint-skin.py <your-new-example.html>`.
-The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must stay green.
-Semantic routing must pass `python3 scripts/verify-semantic-motion.py --markdown-only`; the animated example has a separate `--example-only` gate. Every shipped motion template/example must also pass `python3 scripts/verify-motion.py --shipped`.
+The repository-wide check `python3 scripts/lint-skin.py --all --baseline` covers examples and templates and must stay green.
+CI separately verifies semantic routing, animated-example structure, animated skin, every shipped motion asset, and adversarial mutations of the controller contract, reporting later gate outcomes even when an earlier gate fails. Semantic routing must pass `python3 scripts/verify-semantic-motion.py --markdown-only`; the animated example has a separate `--example-only` gate. Every shipped motion template/example must also pass `python3 scripts/verify-motion.py --shipped`.
 The linter's `a11y` category rejects diagram SVGs without a resolving accessible name,
-an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs.
+an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs. It also pins the exact reviewed motion controller and rejects remote assets, CSS `@import`, non-fragment CSS `url()`, and executable attributes such as `onclick` or `srcdoc`.
 If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` must also pass —
 it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
 container formats and checks the references stay in sync.

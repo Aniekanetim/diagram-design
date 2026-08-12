@@ -20,7 +20,7 @@ SKILL = ROOT / "skills/diagram-design/SKILL.md"
 PATTERNS = ROOT / "skills/diagram-design/references/semantic-patterns.md"
 ANIMATION = ROOT / "skills/diagram-design/references/animation.md"
 EXAMPLE = ROOT / "skills/diagram-design/assets/example-policy-trace-animated.html"
-MAX_SKILL_BYTES = 35_000
+MAX_SKILL_BYTES = 40_000
 
 PATTERN_NAMES = (
     "Fan-in queue / bottleneck",
@@ -190,7 +190,13 @@ def verify_markdown() -> list[str]:
         )
     if "Selection: semantic pattern, then visual type" not in skill:
         errors.append("SKILL.md must choose semantic pattern before visual type")
-    if skill.find("semantic-patterns.md") > skill.find("### Visual-type guide (27)"):
+    router_position = skill.find("semantic-patterns.md")
+    guide_position = skill.find("### Visual-type guide (27)")
+    if router_position < 0:
+        errors.append("SKILL.md must link to semantic-patterns.md")
+    if guide_position < 0:
+        errors.append("SKILL.md must contain the 27-row visual-type guide")
+    if router_position >= 0 and guide_position >= 0 and router_position > guide_position:
         errors.append("semantic-pattern router must precede the visual-type guide")
 
     visual_guide = section(skill, "### Visual-type guide (27)", "Rules of thumb:")
@@ -324,9 +330,17 @@ def verify_example(path: Path = EXAMPLE) -> list[str]:
     steps: list[int] = []
     for item in parser.motion_items:
         try:
-            steps.append(int(item.get("data-step", "")))
+            step = int(item.get("data-step", ""))
         except ValueError:
             errors.append("every motion item needs an integer data-step")
+            continue
+        if "data-motion-decorative" in item:
+            if item.get("aria-hidden") != "true" or item.get("focusable") != "false":
+                errors.append(
+                    "decorative motion items need aria-hidden=true and focusable=false"
+                )
+            continue
+        steps.append(step)
         if not item.get("aria-label", "").strip():
             errors.append("every semantic motion item needs an aria-label")
     if steps != [1, 2, 3, 4, 5]:

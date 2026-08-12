@@ -1,6 +1,6 @@
 ---
 name: diagram-design
-description: Create branded technical and product diagrams in 27 visual types, with semantic patterns, optional accessible motion, and .drawio/Mermaid import.
+description: Create branded architecture, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, loop/flywheel, nested, tree, org chart, layer stack, Venn, pyramid/funnel, bar, line, Gantt and scatter charts, high-level, process, medallion, data flow, DP integration, or DP security matrix diagrams as standalone HTML/SVG/PNG. Redraw .drawio/.drawio.png/.drawio.svg or Mermaid .mmd sources at a chosen size/detail; onboard brand tokens from a website; add semantic patterns, callouts, accessible motion, or sketchy/hand-drawn styling.
 license: MIT
 metadata:
   version: "2.3"
@@ -17,6 +17,8 @@ Twenty-seven visual types. Semantic patterns describe behavior independently; ty
 ## 0. First-time setup — style guide gate
 
 **Before generating your first diagram in a new project, verify the style guide has been customized.**
+
+Don't silently ship default-skinned diagrams into a branded project.
 
 Open [`references/style-guide.md`](references/style-guide.md) and check the default tokens. If they're still the shipped defaults (paper `#faf7f2`, ink `#1c1917`, accent `#b5523a` rust), **pause and ask the user**:
 
@@ -51,7 +53,7 @@ Applied to schematics:
 
 ## 2. When to Use
 
-Use for any of the 27 diagram types (§3) when a reader will learn more from a visual than from prose, a table, or a bulleted list.
+Use for any of the 27 visual types (§3) when a reader will learn more from a visual than from prose, a table, or a bulleted list.
 
 **Don't use for:**
 
@@ -457,7 +459,7 @@ Run before producing any diagram.
 - [ ] No vertical `writing-mode` text?
 - [ ] `viewBox` expanded for the legend strip (~60px)?
 - [ ] Every font size, coord, width, height, gap divisible by 4?
-- [ ] If animated, does the complete static/no-JS frame work, does reduced motion hide/disable playback, is the controller copied verbatim from `template-motion.html`, and did I run `verify-motion.py --shipped` plus the skin linter?
+- [ ] If animated, does the complete static/no-JS frame work, does reduced motion hide/disable playback, and is the controller copied verbatim from `template-motion.html`? In this repository, run `python3 scripts/verify-motion.py path/to/generated.html` plus the skin linter; from an installed skill, manually check no-JS, reduced-motion, print, and static-query states because the repository verifiers are not packaged.
 
 **Typography:**
 

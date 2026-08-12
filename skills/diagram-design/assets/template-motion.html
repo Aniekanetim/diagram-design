@@ -20,7 +20,7 @@
       --motion-fast: 160ms;
       --motion-step: 480ms;
       --motion-hold: 720ms;
-      --motion-total: 4320ms;
+      --motion-total: 3600ms;
       --motion-ease: cubic-bezier(.2,.8,.2,1);
     }
     body {
@@ -46,7 +46,7 @@
 
     /* Static source is complete. Only an initialized enhancement hides items. */
     .motion-ready [data-motion-item] {
-      opacity: 0;
+      opacity: .12;
       transform: translateY(8px);
       transform-box: fill-box;
       transform-origin: center;
@@ -127,6 +127,11 @@
       clip: rect(0,0,0,0);
       white-space: nowrap;
       border: 0;
+    }
+    noscript p {
+      margin: 12px 0 0;
+      color: var(--color-muted);
+      font: 500 12px/1.4 var(--font-mono);
     }
 
     html[data-motion="static"] [data-motion-controls],
@@ -216,16 +221,17 @@
       <circle data-motion-item data-step="3" data-motion-decorative aria-hidden="true" focusable="false" class="flow-token" cx="556" cy="180" r="6" fill="#eb6c36"/>
     </svg>
 
-    <div data-motion-controls aria-label="Diagram playback controls">
+    <div data-motion-controls role="group" aria-label="Diagram playback controls">
       <button type="button" data-motion-action="prev">Previous</button>
       <button type="button" data-motion-action="play" aria-pressed="false">Play</button>
       <button type="button" data-motion-action="pause" aria-pressed="true">Pause</button>
       <button type="button" data-motion-action="next">Next</button>
       <button type="button" data-motion-action="replay">Replay</button>
-      <span class="keyboard-help">Arrow keys step · Home/End jump</span>
+      <span class="keyboard-help">←/→ step · Space play/pause · R replay · Home/End jump</span>
       <span data-motion-status-visible aria-hidden="true">Step <span data-motion-step-label>5</span> of 5</span>
     </div>
     <p class="sr-only" data-motion-status role="status" aria-live="polite" aria-atomic="true"></p>
+    <noscript><p>Animation controls require JavaScript. The complete final diagram is shown above.</p></noscript>
   </main>
 
   <script data-diagram-controls>
@@ -238,6 +244,7 @@
 
       document.querySelectorAll('[data-motion-root]').forEach((root) => {
         const count = Number(root.dataset.stepCount);
+        const hold = parseFloat(getComputedStyle(root).getPropertyValue('--motion-hold')) || 720;
         const parsedStep = requestedStep !== null && /^\d+$/.test(requestedStep) ? Number(requestedStep) : null;
         const exactStep = params.get('motion') === 'step' && Number.isSafeInteger(parsedStep) && parsedStep >= 0 && parsedStep <= count ? parsedStep : null;
         const items = [...root.querySelectorAll('[data-motion-item]')];
@@ -300,7 +307,7 @@
           if (step >= count) { finish(); return; }
           render(step + 1, false);
           if (step >= count) { finish(); return; }
-          timer = window.setTimeout(tick, 720);
+          timer = window.setTimeout(tick, hold);
         }
 
         function play(fromStart = false, userInitiated = false) {
@@ -310,7 +317,7 @@
           root.classList.add('is-playing');
           buttons('play').setAttribute('aria-pressed', 'true');
           buttons('pause').setAttribute('aria-pressed', 'false');
-          timer = window.setTimeout(tick, 720);
+          timer = window.setTimeout(tick, hold);
         }
 
         controls.addEventListener('click', (event) => {
@@ -332,7 +339,7 @@
             playing ? pause(true) : play(false, true);
             return;
           }
-          if (event.key.toLowerCase() === 'r') {
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.toLowerCase() === 'r') {
             event.preventDefault();
             play(true, true);
             return;
@@ -384,7 +391,6 @@
           }
         });
 
-        root.classList.add('motion-ready');
         if (staticOverride) {
           document.documentElement.dataset.motion = 'static';
           pause(false);
@@ -420,6 +426,7 @@
           render(0, false);
           status.textContent = `Ready · step 0 of ${count}`;
         }
+        root.classList.add('motion-ready');
       });
     })();
   </script>
