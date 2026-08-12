@@ -346,6 +346,8 @@ If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` 
 it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
 container formats and checks the references stay in sync.
 
+All pull requests and pushes are automatically validated via GitHub Actions CI (`.github/workflows/ci.yml`).
+
 ### What loads when
 
 At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 36 reference files.
