@@ -314,6 +314,10 @@ def normalize_url(raw: str) -> str:
 def normalize_devicon(raw: str) -> str:
     """Devicon SVGs have colored fills and a 128x128 or 32x32 viewBox.
     Strip fills/classes and rewrite to 24x24 currentColor."""
+    viewbox_match = re.search(
+        r'\bviewBox\s*=\s*(["\'])(.*?)\1', raw, flags=re.IGNORECASE
+    )
+    viewbox = viewbox_match.group(2).strip() if viewbox_match else "0 0 128 128"
     inner = re.search(r"<svg\b[^>]*>(.*?)</svg>", raw, flags=re.DOTALL | re.IGNORECASE)
     if not inner:
         raise ValueError("no <svg> in Devicon payload")
@@ -325,7 +329,7 @@ def normalize_devicon(raw: str) -> str:
     body = re.sub(r'\bclass="[^"]*"', 'fill="currentColor"', body)
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 128 128" '
+        f'<svg aria-hidden="true" width="24" height="24" viewBox="{viewbox}" '
         f'fill="currentColor">{body}</svg>'
     )
 
