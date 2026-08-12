@@ -600,11 +600,11 @@ def main() -> int:
     md_chunks, gallery_chunks, misses = build()
 
     MD_OUT.parent.mkdir(parents=True, exist_ok=True)
-    MD_OUT.write_bytes("".join(md_chunks).replace("\r\n", "\n").encode("utf-8"))
+    MD_OUT.write_text("".join(md_chunks), encoding="utf-8")
 
     HTML_OUT.parent.mkdir(parents=True, exist_ok=True)
     html = GALLERY_TEMPLATE.replace("{SECTIONS}", "\n".join(gallery_chunks))
-    HTML_OUT.write_bytes(html.replace("\r\n", "\n").encode("utf-8"))
+    HTML_OUT.write_text(html, encoding="utf-8")
 
     total = sum(len(items) for items in ICONS.values())
     print(f"\nDone. {total - len(misses)}/{total} fetched.", file=sys.stderr)

@@ -361,7 +361,7 @@ If you touch the Mermaid import path, `python3 scripts/verify-mermaid-import.py`
 it covers all supported grammars, multi-block Markdown, adversarial labels, trust-boundary
 behavior, resource caps, named failures, and reference/command wiring.
 
-All pull requests and pushes are automatically validated across Linux, Windows, and macOS runners via GitHub Actions CI (`.github/workflows/ci.yml`). Failure artifacts are automatically packaged and uploaded for visual debugging.
+All pull requests and pushes are automatically validated across Linux, Windows, and macOS runners via GitHub Actions CI (`.github/workflows/ci.yml`).
 
 ### What loads when
 

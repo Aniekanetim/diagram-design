@@ -19,7 +19,7 @@ See [README.md](README.md) for the full picture, including the design system and
 - **Create an issue first** for anything non-trivial (new type, behavior change, import grammar work). Small fixes and docs can go straight to a PR.
 - **Work on a branch** — never commit directly to `main`.
 - **Keep the scope tight.** One PR = one concern. Mixing a new diagram type with a docs rewrite makes review slow.
-- **Python 3.10+ is required** for the development scripts (CI runs 3.11).
+- **Python 3.10+ is required** for the development scripts (CI runs 3.11 and 3.12 across Linux, Windows, and macOS).
 
 ---
 
