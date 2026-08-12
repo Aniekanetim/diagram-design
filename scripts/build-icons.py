@@ -246,11 +246,13 @@ def normalize_url(raw: str) -> str:
     - White / near-white fills (#fff, #ffffff, white) are kept as-is — they
       act as contrast cutouts in 2-colour logos (e.g. white letter on coloured
       circle).  Every other colour becomes currentColor.
-    - inline style="fill:#..." is rewritten to a fill= attribute.
+    - inline fill/stroke colours are normalized without discarding other styles.
     - Inkscape layer translate() transforms are stripped (canvas offset artefact).
     """
-    vb_match = re.search(r'viewBox="([^"]+)"', raw, re.IGNORECASE)
-    viewbox = vb_match.group(1) if vb_match else "0 0 128 128"
+    vb_match = re.search(
+        r'\bviewBox\s*=\s*(["\'])(.*?)\1', raw, flags=re.IGNORECASE
+    )
+    viewbox = vb_match.group(2).strip() if vb_match else "0 0 128 128"
     inner = re.search(r"<svg\b[^>]*>(.*?)</svg>", raw, flags=re.DOTALL | re.IGNORECASE)
     if not inner:
         raise ValueError("no <svg> in payload")
@@ -261,27 +263,55 @@ def normalize_url(raw: str) -> str:
     # Strip Inkscape canvas-offset translate transforms from group wrappers
     body = re.sub(r'\btransform="translate\([^"]+\)"', '', body)
 
-    def _rewrite_fill(m: re.Match) -> str:
+    def _normalized_fill(value: str) -> str:
         """Keep white; turn everything else into currentColor."""
-        hex_val = m.group(1).lower().strip()
+        hex_val = value.lower().strip()
         if hex_val in ("#fff", "#ffffff", "white", "#fefefe", "#fdfdfd"):
-            return 'fill="#fff"'
-        return 'fill="currentColor"'
+            return "#fff"
+        return "currentColor"
 
-    # Rewrite inline style="fill:#rrggbb" → standalone fill= attribute
+    def _normalize_inline_style(match: re.Match) -> str:
+        quote, declarations = match.group(1), match.group(2)
+        declarations = re.sub(
+            r'(\bfill\s*:\s*)(#[0-9a-fA-F]{3,8}|white)\b',
+            lambda fill: f"{fill.group(1)}{_normalized_fill(fill.group(2))}",
+            declarations,
+            flags=re.IGNORECASE,
+        )
+        declarations = re.sub(
+            r'(\bstroke\s*:\s*)#[0-9a-fA-F]{3,8}\b',
+            lambda stroke: f"{stroke.group(1)}currentColor",
+            declarations,
+            flags=re.IGNORECASE,
+        )
+        return f"style={quote}{declarations}{quote}"
+
+    # Normalize supported inline colours while preserving unrelated declarations.
     body = re.sub(
-        r'style="[^"]*fill:\s*(#[0-9a-fA-F]{3,8}|white)[^"]*"',
-        lambda m: _rewrite_fill(re.search(r'(#[0-9a-fA-F]{3,8}|white)', m.group(0))),
+        r'style\s*=\s*(["\'])(.*?)\1',
+        _normalize_inline_style,
         body,
+        flags=re.IGNORECASE,
     )
-    # Rewrite standalone fill="#rrggbb" attributes
+    # Rewrite standalone fill="#rrggbb" attributes.
     body = re.sub(
-        r'\bfill="(#[0-9a-fA-F]{3,8}|white)"',
-        _rewrite_fill,
+        r'\bfill\s*=\s*(["\'])(#[0-9a-fA-F]{3,8}|white)\1',
+        lambda m: f'fill="{_normalized_fill(m.group(2))}"',
         body,
+        flags=re.IGNORECASE,
     )
-    body = re.sub(r'\bstroke="#[0-9a-fA-F]{3,8}"', 'stroke="currentColor"', body)
-    body = re.sub(r'\bfill="none"', '', body)
+    body = re.sub(
+        r'\bstroke\s*=\s*(["\'])#[0-9a-fA-F]{3,8}\1',
+        'stroke="currentColor"',
+        body,
+        flags=re.IGNORECASE,
+    )
+    body = re.sub(
+        r'\bfill\s*=\s*(["\'])none\1',
+        '',
+        body,
+        flags=re.IGNORECASE,
+    )
     body = re.sub(r"\s+", " ", body).strip()
     return (
         f'<svg aria-hidden="true" width="24" height="24" viewBox="{viewbox}" '
