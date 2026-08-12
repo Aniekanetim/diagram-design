@@ -46,10 +46,20 @@ jobs:
       - name: Verify Mermaid import script
         run: python scripts/verify-mermaid-import.py
 
+      - name: Install Playwright & Chromium
+        shell: bash
+        run: |
+          python -m pip install playwright
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            python -m playwright install --with-deps chromium
+          else
+            python -m playwright install chromium
+          fi
 
       - name: Verify generated icon assets
+        shell: bash
         run: |
-          python3 scripts/build-icons.py
+          python scripts/build-icons.py
           git diff --ignore-space-at-eol --exit-code -- \
             skills/diagram-design/assets/icons.html \
             skills/diagram-design/references/primitive-icons.md
