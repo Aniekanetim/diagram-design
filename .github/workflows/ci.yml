@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONIOENCODING: utf-8
+
 jobs:
   validate:
     name: Lint & Verify (${{ matrix.os }}, Python ${{ matrix.python-version }})
@@ -46,6 +49,9 @@ jobs:
       - name: Verify Mermaid import script
         run: python scripts/verify-mermaid-import.py
 
+      - name: Verify onboarding CLI script
+        run: python scripts/verify-onboarding.py
+
       - name: Install Playwright & Chromium
         shell: bash
         run: |
@@ -55,6 +61,9 @@ jobs:
           else
             python -m playwright install chromium
           fi
+
+      - name: Verify render layout validator self-test
+        run: python scripts/lint-render.py --self-test
 
       - name: Verify generated icon assets
         shell: bash
