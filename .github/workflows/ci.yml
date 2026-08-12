@@ -43,6 +43,15 @@ jobs:
         id: a11y
         run: python scripts/test-lint-a11y.py
 
+      - name: Verify URL SVG normalization
+        run: python3 scripts/test-build-icons-quoted-attributes.py
+
+      - name: Verify Devicon normalization
+        run: python3 scripts/test-build-icons-devicon.py
+
+      - name: Verify mojibake repair utility
+        run: python3 scripts/test-fix-mojibake.py
+
       - name: Run skin linter
         id: skin
         run: python scripts/lint-skin.py --all --baseline

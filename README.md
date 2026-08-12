@@ -81,7 +81,7 @@ All 27 diagrams ship in three variants: minimal light, minimal dark, and full-ed
 </tr>
 </table>
 
-**Browse the live gallery:** open [`skills/diagram-design/assets/index.html`](skills/diagram-design/assets/index.html) in your browser to flip through all 27 diagrams with light / dark / full-editorial tabs.
+**Browse the live gallery:** [cathrynlavery.github.io/diagram-design](https://cathrynlavery.github.io/diagram-design/) — or open [`skills/diagram-design/assets/index.html`](skills/diagram-design/assets/index.html) locally to flip through all 27 diagrams with light / dark / full-editorial tabs.
 
 ---
 
@@ -405,6 +405,12 @@ One accent color, 1–2 focal elements per diagram. Three font families: Instrum
 - **One-shape "diagrams"** — a single box with a label → just write the sentence.
 
 Before drawing, ask: *would a reader learn more from this than from a well-written paragraph?* If no, don't draw.
+
+---
+
+## Contributing
+
+Contributions are welcome — new diagram types, import grammar support, examples, docs, and tooling. See [CONTRIBUTING.md](CONTRIBUTING.md) for the validation gates and workflows, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community standards.
 
 ---
 
