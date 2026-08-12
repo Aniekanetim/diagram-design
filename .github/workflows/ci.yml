@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Verify accessible SVG contract
+        run: python3 scripts/test-lint-a11y.py
+
       - name: Run skin linter
         run: python3 scripts/lint-skin.py --all --baseline
 
