@@ -22,16 +22,17 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: "core.autocrlf"
+          GIT_CONFIG_VALUE_0: "false"
         with:
           persist-credentials: false
-
-      - name: Configure git line endings
-        run: git config --global core.autocrlf false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,21 +40,27 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Verify accessible SVG contract
+        id: a11y
         run: python scripts/test-lint-a11y.py
 
       - name: Run skin linter
+        id: skin
         run: python scripts/lint-skin.py --all --baseline
 
       - name: Verify sequence OAuth specs
+        id: oauth
         run: python scripts/verify-sequence-oauth.py
 
       - name: Verify draw.io import script
+        id: drawio
         run: python scripts/verify-drawio-import.py
 
       - name: Verify Mermaid import script
+        id: mermaid
         run: python scripts/verify-mermaid-import.py
 
       - name: Verify onboarding CLI script (if present)
+        id: onboard
         shell: bash
         run: |
           if [ -f scripts/verify-onboarding.py ]; then
@@ -61,6 +68,7 @@ jobs:
           fi
 
       - name: Install Playwright & Chromium (if linter present)
+        id: playwright_install
         shell: bash
         run: |
           if [ -f scripts/lint-render.py ]; then
@@ -73,13 +81,15 @@ jobs:
           fi
 
       - name: Verify render layout validator self-test (if present)
+        id: lint_render
         shell: bash
         run: |
           if [ -f scripts/lint-render.py ]; then
-            python scripts/lint-render.py --self-test
+            python scripts/lint-render.py --self-test --screenshot-dir failure-screenshots
           fi
 
       - name: Verify generated icon assets
+        id: icons
         shell: bash
         run: |
           python scripts/build-icons.py
@@ -93,6 +103,7 @@ jobs:
         with:
           name: linter-failure-artifacts-${{ matrix.os }}-python-${{ matrix.python-version }}
           path: |
+            failure-screenshots/
             scripts/fixtures/
             skills/diagram-design/assets/
 
@@ -101,11 +112,11 @@ jobs:
         shell: bash
         run: |
           echo "### 📊 CI Verification Summary (${{ matrix.os }}, Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
-          echo "| Verification Gate | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| Verification Gate | Outcome |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| SVG Accessibility Contract | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Color Palette & Skin Linter | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Sequence Diagram Grammar | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Draw.io Import Extractor | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Mermaid Import Extractor | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Primitive Icons & Documentation | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| SVG Accessibility Contract | ${{ steps.a11y.outcome == 'success' && '✅ Passed' || (steps.a11y.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Color Palette & Skin Linter | ${{ steps.skin.outcome == 'success' && '✅ Passed' || (steps.skin.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sequence Diagram Grammar | ${{ steps.oauth.outcome == 'success' && '✅ Passed' || (steps.oauth.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Draw.io Import Extractor | ${{ steps.drawio.outcome == 'success' && '✅ Passed' || (steps.drawio.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mermaid Import Extractor | ${{ steps.mermaid.outcome == 'success' && '✅ Passed' || (steps.mermaid.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Primitive Icons & Documentation | ${{ steps.icons.outcome == 'success' && '✅ Passed' || (steps.icons.outcome == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
