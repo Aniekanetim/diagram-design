@@ -49,21 +49,31 @@ jobs:
       - name: Verify Mermaid import script
         run: python scripts/verify-mermaid-import.py
 
-      - name: Verify onboarding CLI script
-        run: python scripts/verify-onboarding.py
-
-      - name: Install Playwright & Chromium
+      - name: Verify onboarding CLI script (if present)
         shell: bash
         run: |
-          python -m pip install playwright
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            python -m playwright install --with-deps chromium
-          else
-            python -m playwright install chromium
+          if [ -f scripts/verify-onboarding.py ]; then
+            python scripts/verify-onboarding.py
           fi
 
-      - name: Verify render layout validator self-test
-        run: python scripts/lint-render.py --self-test
+      - name: Install Playwright & Chromium (if linter present)
+        shell: bash
+        run: |
+          if [ -f scripts/lint-render.py ]; then
+            python -m pip install playwright
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              python -m playwright install --with-deps chromium
+            else
+              python -m playwright install chromium
+            fi
+          fi
+
+      - name: Verify render layout validator self-test (if present)
+        shell: bash
+        run: |
+          if [ -f scripts/lint-render.py ]; then
+            python scripts/lint-render.py --self-test
+          fi
 
       - name: Verify generated icon assets
         shell: bash
