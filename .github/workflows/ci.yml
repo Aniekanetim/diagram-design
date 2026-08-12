@@ -32,19 +32,20 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Verify accessible SVG contract
-        run: python3 scripts/test-lint-a11y.py
+        run: python scripts/test-lint-a11y.py
 
       - name: Run skin linter
-        run: python3 scripts/lint-skin.py --all --baseline
+        run: python scripts/lint-skin.py --all --baseline
 
       - name: Verify sequence OAuth specs
-        run: python3 scripts/verify-sequence-oauth.py
+        run: python scripts/verify-sequence-oauth.py
 
       - name: Verify draw.io import script
-        run: python3 scripts/verify-drawio-import.py
+        run: python scripts/verify-drawio-import.py
 
       - name: Verify Mermaid import script
-        run: python3 scripts/verify-mermaid-import.py
+        run: python scripts/verify-mermaid-import.py
+
 
       - name: Verify generated icon assets
         run: |
