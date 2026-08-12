@@ -159,6 +159,9 @@ A --- B
 B --x C
 C --o D
 D ----> E
+E -.- F
+F === G
+A --> B; B --> C
 """,
         encoding="utf-8",
     )
@@ -169,6 +172,15 @@ D ----> E
         fail("cross/circle arrowheads were not normalized")
     if edges[3]["style"] != "solid":
         fail("long edge form did not discard length while retaining style")
+    if edges[4]["style"] != "dashed" or not edges[4]["undirected"]:
+        fail("open dotted edge was not retained as dashed and undirected")
+    if edges[5]["style"] != "thick" or not edges[5]["undirected"]:
+        fail("open thick edge was not retained as thick and undirected")
+    if [(edge["source"], edge["target"]) for edge in edges[6:]] != [
+        ("A", "B"),
+        ("B", "C"),
+    ]:
+        fail("semicolon-separated flowchart statements were not split")
     ok("documented shape families and edge forms normalize")
 
 
@@ -195,6 +207,37 @@ def check_markdown_and_grammars(tmp: Path) -> None:
     if not sequence["notes"]:
         fail("sequence note was not retained as inert text")
 
+    fragments = tmp / "sequence-fragments.mmd"
+    fragments.write_text(
+        """sequenceDiagram
+participant A
+participant B
+alt outer
+critical must succeed
+A->>B: try
+option fallback
+A->>B: recover
+end
+break stop now
+B-->>A: stop
+end
+else continue
+A->>B: continue
+end
+""",
+        encoding="utf-8",
+    )
+    fragment_payload = json.loads(run_extract([str(fragments), "--json"]))["diagrams"][0]
+    fragment_entries = fragment_payload["fragments"]
+    if [entry["kind"] for entry in fragment_entries] != ["alt", "critical", "break"]:
+        fail("critical and break sequence fragments were not retained")
+    if fragment_entries[1]["regions"] != ["fallback"]:
+        fail("critical option region was not retained")
+    if [entry["depth"] for entry in fragment_entries] != [0, 1, 1]:
+        fail("sequence fragment nesting was not retained")
+    if fragment_entries[0]["regions"] != ["continue"]:
+        fail("nested fragment end popped the wrong sequence fragment")
+
     state = tmp / "states.mmd"
     state.write_text(
         """stateDiagram-v2
@@ -206,6 +249,8 @@ state Running {
 Idle --> Running: start
 Running --> [*]: stop
 state fork_join <<fork>>
+s1 : Waiting for work
+s1 --> Idle: ready
 """,
         encoding="utf-8",
     )
@@ -218,6 +263,9 @@ state fork_join <<fork>>
         fail("state start marker was not exposed as an entry point")
     if not state_payload["analysis"]["terminals"]:
         fail("state end marker was not exposed as a terminal")
+    state_nodes = {node["id"]: node for node in state_payload["nodes"]}
+    if state_nodes["s1"]["label"] != "Waiting for work":
+        fail("colon-form state description was not retained")
 
     er = tmp / "model.mermaid"
     er.write_text(
@@ -242,7 +290,7 @@ CUSTOMER ||--o{ ORDER : places
     ok("Markdown selection plus sequence, state, and ER grammars parse")
 
 
-def check_adversarial() -> None:
+def check_adversarial(tmp: Path) -> None:
     payload = json.loads(run_extract([str(ADVERSARIAL), "--json"]))
     diagram = payload["diagrams"][0]
     nodes = {node["id"]: node for node in diagram["nodes"]}
@@ -271,6 +319,21 @@ def check_adversarial() -> None:
         fail("click URL crossed the trust boundary into output")
     if "IGNORE ALL PREVIOUS INSTRUCTIONS" not in serialized:
         fail("prompt-injection label was not retained as inert diagram text")
+
+    markdown_payload = tmp / "markdown-payload.mmd"
+    markdown_payload.write_text(
+        'flowchart TD\nA["&lt;img src=https://example.invalid/pixel&gt; '
+        '![remote](https://example.invalid/image) [link](https://example.invalid)"]\n',
+        encoding="utf-8",
+    )
+    digest_path = tmp / "digest.md"
+    run_extract([str(markdown_payload), "--out", str(digest_path)])
+    digest_text = digest_path.read_text(encoding="utf-8")
+    for active in ("<img", "![remote]", "[link](https://example.invalid)"):
+        if active in digest_text:
+            fail(f"Markdown digest reactivated untrusted label content: {active!r}")
+    if "&lt;img src=" not in digest_text or "&gt;" not in digest_text:
+        fail("decoded HTML label was not safely encoded in Markdown output")
     ok("adversarial labels stay inert; nesting, chains, fan-out, discards work")
 
 
@@ -418,7 +481,7 @@ def main() -> int:
         check_flowchart()
         check_shape_and_edge_vocabulary(tmp)
         check_markdown_and_grammars(tmp)
-        check_adversarial()
+        check_adversarial(tmp)
         check_errors_and_limits(tmp)
         check_docs_and_wiring()
     print("\nAll Mermaid import gates passed.")

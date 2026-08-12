@@ -405,7 +405,7 @@ class _Operator:
 def _operator_style(token: str) -> tuple[str, str, bool, bool]:
     style = "dashed" if "." in token else "thick" if "=" in token else "solid"
     arrowhead = "cross" if token.endswith("x") else "circle" if token.endswith("o") else "arrow"
-    undirected = token.endswith("-") and ">" not in token
+    undirected = ">" not in token and not token.endswith(("x", "o"))
     bidirectional = token.startswith("<") and token.endswith(">")
     return style, arrowhead, bidirectional, undirected
 
@@ -432,7 +432,7 @@ def _edge_operators(text: str) -> list[_Operator]:
         )
         occupied.append((match.start(), match.end()))
 
-    pattern = re.compile(r"<[-=.]+>|-+\.-+>|=+>|-+(?:>|x|o)|-{3,}")
+    pattern = re.compile(r"<[-=.]+>|-+\.-+>|=+>|-+(?:>|x|o)|-+\.-+|={3,}|-{3,}")
     for match in pattern.finditer(mask):
         if any(start <= match.start() < end for start, end in occupied):
             continue
@@ -485,7 +485,12 @@ def _parse_flowchart(
     diagram: Diagram, lines: list[tuple[int, str]], header_position: int
 ) -> None:
     containers: list[str] = []
-    for line_number, raw in lines[header_position + 1 :]:
+    statements = (
+        (line_number, statement)
+        for line_number, raw in lines[header_position + 1 :]
+        for statement in _split_top_level(raw, ";")
+    )
+    for line_number, raw in statements:
         text = raw.strip()
         if not text:
             continue
@@ -577,7 +582,7 @@ def _parse_sequence(
                 "actor" if participant.group(1).casefold() == "actor" else "lifeline",
             )
             continue
-        fragment = re.match(r"^(alt|opt|loop|par)\b\s*(.*)$", text, re.I)
+        fragment = re.match(r"^(alt|opt|loop|par|critical|break)\b\s*(.*)$", text, re.I)
         if fragment:
             entry = {
                 "kind": fragment.group(1).casefold(),
@@ -589,7 +594,7 @@ def _parse_sequence(
             diagram.fragments.append(entry)
             fragment_stack.append(entry)
             continue
-        region = re.match(r"^(else|and)\b\s*(.*)$", text, re.I)
+        region = re.match(r"^(else|and|option)\b\s*(.*)$", text, re.I)
         if region and fragment_stack:
             fragment_stack[-1]["regions"].append(clean_label(region.group(2)))
             continue
@@ -688,6 +693,12 @@ def _parse_state(
             continue
         if "-->" in text:
             _fail(f"malformed edge at line {line_number}")
+        description = re.match(r"^([A-Za-z_][\w.-]*)\s*:\s*(.+)$", text)
+        if description:
+            diagram.add_node(
+                description.group(1), clean_label(description.group(2)), "state", parent
+            )
+            continue
         plain = re.match(r"^state\s+([\w.:-]+)$", text, re.I)
         if plain:
             diagram.add_node(plain.group(1), plain.group(1), "state", parent)
@@ -870,8 +881,13 @@ def analyze(diagram: Diagram) -> dict[str, Any]:
     }
 
 
+def _escape_markdown(text: str) -> str:
+    encoded = html.escape(text, quote=False)
+    return re.sub(r"([\\`*{}\[\]()#+\-.!_|>])", r"\\\1", encoded)
+
+
 def _escape_table(text: str) -> str:
-    return text.replace("\n", " ⏎ ").replace("|", "\\|")
+    return _escape_markdown(text.replace("\n", " ⏎ "))
 
 
 def digest(
@@ -913,28 +929,40 @@ def digest(
             )
         if diagram.fragments:
             fragments = ", ".join(
-                f"{item['kind']}({item['label'] or 'unlabeled'})" for item in diagram.fragments
+                f"{item['kind']}({_escape_markdown(item['label'] or 'unlabeled')})"
+                for item in diagram.fragments
             )
             output.append(f"- fragments: {fragments}")
         if diagram.notes:
-            output.append(f"- notes: {'; '.join(diagram.notes[:6])}")
+            output.append(
+                f"- notes: {'; '.join(_escape_markdown(note) for note in diagram.notes[:6])}"
+            )
         if info["hubs"]:
             output.append(
                 "- hubs (focal candidates): "
-                + ", ".join(f"{hub['label']}({hub['degree']})" for hub in info["hubs"])
+                + ", ".join(
+                    f"{_escape_markdown(hub['label'])}({hub['degree']})"
+                    for hub in info["hubs"]
+                )
             )
         if info["entry_points"]:
-            output.append(f"- entry points: {', '.join(info['entry_points'])}")
+            output.append(
+                f"- entry points: {', '.join(_escape_markdown(label) for label in info['entry_points'])}"
+            )
         if info["terminals"]:
-            output.append(f"- terminals: {', '.join(info['terminals'])}")
+            output.append(
+                f"- terminals: {', '.join(_escape_markdown(label) for label in info['terminals'])}"
+            )
         if info["orphans"]:
-            output.append(f"- unconnected: {', '.join(info['orphans'])}")
+            output.append(
+                f"- unconnected: {', '.join(_escape_markdown(label) for label in info['orphans'])}"
+            )
         if info["collapsible_groups"]:
             output.append("- collapsible groups (simplify here first):")
             for group in info["collapsible_groups"]:
                 output.append(
-                    f"  - {group['label']} — {group['children']} children: "
-                    + ", ".join(group["child_labels"])
+                    f"  - {_escape_markdown(group['label'])} — {group['children']} children: "
+                    + ", ".join(_escape_markdown(label) for label in group["child_labels"])
                 )
 
         output.extend(
