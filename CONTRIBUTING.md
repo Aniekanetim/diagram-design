@@ -30,21 +30,29 @@ Every validation gate below must pass before a PR is ready. They also run automa
 | What it checks | Command |
 |---|---|
 | Accessible SVG contract (unit tests for the a11y linter) | `python3 scripts/test-lint-a11y.py` |
+| Semantic-pattern routing | `python3 scripts/verify-semantic-motion.py --markdown-only` |
+| Animated-example structure and accessibility | `python3 scripts/verify-semantic-motion.py --example-only` |
 | Skin conformance of every example (colors, fonts, a11y) | `python3 scripts/lint-skin.py --all --baseline` |
 | A single file, e.g. a new example | `python3 scripts/lint-skin.py skills/diagram-design/assets/example-my-type.html` |
 | Sequence-doc consistency (ATL fragments, budgets) | `python3 scripts/verify-sequence-oauth.py` |
 | draw.io import path (real extractor vs fixtures + docs sync) | `python3 scripts/verify-drawio-import.py` |
 | Mermaid import path (grammars, adversarial input, caps, docs sync) | `python3 scripts/verify-mermaid-import.py` |
+| Optional motion contract (fallbacks, controls, budgets, determinism) | `python3 scripts/test-verify-motion.py` |
+| Every shipped motion template/example | `python3 scripts/verify-motion.py --shipped` |
 | Generated icon assets are up to date (`icons.html`, `primitive-icons.md`) | `python3 scripts/build-icons.py` then `git diff --exit-code` on the two generated files |
 
 Run them all at once before pushing:
 
 ```bash
 python3 scripts/test-lint-a11y.py \
+  && python3 scripts/verify-semantic-motion.py --markdown-only \
+  && python3 scripts/verify-semantic-motion.py --example-only \
+  && python3 scripts/verify-motion.py --shipped \
   && python3 scripts/lint-skin.py --all --baseline \
   && python3 scripts/verify-sequence-oauth.py \
   && python3 scripts/verify-drawio-import.py \
-  && python3 scripts/verify-mermaid-import.py
+  && python3 scripts/verify-mermaid-import.py \
+  && python3 scripts/test-verify-motion.py
 ```
 
 ### If a gate fails
@@ -85,6 +93,8 @@ python3 scripts/lint-skin.py skills/diagram-design/assets/example-my-type.html
 ```
 
 New examples should be added to the gallery (`assets/index.html`) so they stay browsable.
+
+Motion is opt-in. Start from `skills/diagram-design/assets/template-motion.html`, follow `references/animation.md`, and run `python3 scripts/verify-motion.py <file>` plus `python3 scripts/test-verify-motion.py`. A motion file must preserve complete no-JavaScript, reduced-motion, print, screenshot, and export states.
 
 ## Adding a new diagram type
 

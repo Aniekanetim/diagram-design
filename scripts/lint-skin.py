@@ -6,17 +6,20 @@ skin. Use ``--all --baseline`` to skip those documented legacy files.
 """
 
 import argparse
+import hashlib
 import re
 import sys
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parent.parent
 STYLE_GUIDE = ROOT / "skills/diagram-design/references/style-guide.md"
 ASSET_DIR = ROOT / "skills/diagram-design/assets"
 BASELINE = ROOT / "scripts/lint-skin-baseline.txt"
+MOTION_TEMPLATE = ASSET_DIR / "template-motion.html"
 
 HEX_RE = re.compile(
     r"(?<![\w-])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])"
@@ -26,14 +29,21 @@ RGBA_RE = re.compile(
     re.IGNORECASE,
 )
 BLACK_RGB_RE = re.compile(r"rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)", re.IGNORECASE)
-SCRIPT_RE = re.compile(r"<script\b", re.IGNORECASE)
-SRC_HTTP_RE = re.compile(r"\bsrc\s*=\s*(['\"])\s*https?://", re.IGNORECASE)
-IMPORT_HTTP_RE = re.compile(
-    r"@import\s+(?:url\(\s*)?(?:['\"]\s*)?https?://", re.IGNORECASE
+SCRIPT_OPEN_RE = re.compile(r"<script\b(?P<attrs>[^>]*)>", re.IGNORECASE | re.DOTALL)
+SCRIPT_BLOCK_RE = re.compile(
+    r"<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script\s*>",
+    re.IGNORECASE | re.DOTALL,
 )
-URL_HTTP_RE = re.compile(r"url\(\s*(?:['\"]\s*)?https?://", re.IGNORECASE)
+SRC_HTTP_RE = re.compile(r"\bsrc\s*=\s*(['\"])\s*(?:https?:)?//", re.IGNORECASE)
+IMPORT_HTTP_RE = re.compile(
+    r"@import\s+(?:url\(\s*)?(?:['\"]\s*)?(?:https?:)?//", re.IGNORECASE
+)
+URL_HTTP_RE = re.compile(r"url\(\s*(?:['\"]\s*)?(?:https?:)?//", re.IGNORECASE)
+IMPORT_ANY_RE = re.compile(r"@import\b", re.IGNORECASE)
+URL_ANY_RE = re.compile(r"url\(\s*([^)]+?)\s*\)", re.IGNORECASE)
 LINK_RE = re.compile(r"<link\b[^>]*>", re.IGNORECASE | re.DOTALL)
 HREF_RE = re.compile(r"\bhref\s*=\s*(['\"])(.*?)\1", re.IGNORECASE | re.DOTALL)
+REL_RE = re.compile(r"\brel\s*=\s*(['\"])(.*?)\1", re.IGNORECASE | re.DOTALL)
 FONT_CSS_RE = re.compile(r"font-family\s*:\s*([^;}]+)", re.IGNORECASE)
 FONT_ATTR_RE = re.compile(
     r"\bfont-family\s*=\s*(['\"])(.*?)\1", re.IGNORECASE | re.DOTALL
@@ -50,6 +60,137 @@ ALLOWED_FONTS = {
     "ui-monospace",
 }
 CSS_FONT_KEYWORDS = {"inherit", "initial", "revert", "revert-layer", "unset"}
+
+
+def normalized_controller(body):
+    """Return a platform-stable representation of an inline controller."""
+    return body.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def canonical_controller_digest():
+    """Hash the one reviewed controller shipped by the motion template."""
+    source = MOTION_TEMPLATE.read_text(encoding="utf-8")
+    blocks = list(SCRIPT_BLOCK_RE.finditer(source))
+    if len(blocks) != 1:
+        raise RuntimeError("template-motion.html must contain exactly one controller")
+    body = normalized_controller(blocks[0].group("body"))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def google_fonts_families(url):
+    """Return exact families from an approved Google Fonts css2 stylesheet."""
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return set()
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.hostname is None
+        or parsed.hostname.casefold() != "fonts.googleapis.com"
+        or port not in (None, 443)
+        or parsed.path != "/css2"
+        or parsed.fragment
+    ):
+        return set()
+    families = set()
+    for value in parse_qs(parsed.query, keep_blank_values=True).get("family", []):
+        family = value.split(":", 1)[0].strip()
+        if family:
+            families.add(family.casefold())
+    return families
+
+
+class ResourceParser(HTMLParser):
+    """Collect remote resource dependencies without executing the document."""
+
+    RESOURCE_ATTRS = {
+        "base": ("href",),
+        "link": ("href",),
+        "script": ("src",),
+        "img": ("src", "srcset"),
+        "iframe": ("src",),
+        "object": ("data",),
+        "embed": ("src",),
+        "image": ("href", "xlink:href"),
+        "use": ("href", "xlink:href"),
+        "video": ("src", "poster"),
+        "audio": ("src",),
+        "source": ("src", "srcset"),
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.remote: list[tuple[int, str, str, str]] = []
+        self.executable: list[tuple[int, str, str]] = []
+        self.fonts: set[str] = set()
+
+    @staticmethod
+    def is_remote(value):
+        try:
+            parsed = urlparse(value.strip())
+        except ValueError:
+            return True
+        return bool(parsed.scheme) or bool(parsed.netloc)
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.casefold()
+        data = {name.casefold(): value or "" for name, value in attrs}
+        line, _column = self.getpos()
+        for name, value in data.items():
+            compact = "".join(character for character in value if ord(character) > 32).casefold()
+            if (
+                name.startswith("on")
+                or name == "srcdoc"
+                or tag == "base"
+                or compact.startswith("javascript:")
+                or compact.startswith("data:text/html")
+            ):
+                self.executable.append((line, tag, name))
+        for attr in self.RESOURCE_ATTRS.get(tag, ()):
+            value = data.get(attr, "").strip()
+            candidates = (
+                [item.strip().split()[0] for item in value.split(",") if item.strip()]
+                if attr == "srcset"
+                else [value]
+            )
+            for candidate in candidates:
+                if not candidate or not self.is_remote(candidate):
+                    continue
+                rel = data.get("rel", "").casefold().split()
+                approved_fonts = (
+                    google_fonts_families(candidate)
+                    if tag == "link" and attr == "href" and "stylesheet" in rel
+                    else set()
+                )
+                if approved_fonts:
+                    self.fonts.update(approved_fonts)
+                else:
+                    self.remote.append((line, tag, attr, candidate))
+
+
+def style_guide_families():
+    """Read only the Family cells in the style guide's Typography table."""
+    markdown = STYLE_GUIDE.read_text(encoding="utf-8")
+    match = re.search(
+        r"^## Typography\s*$.*?^\| Role \| Family \|.*?\n(?P<rows>.*?)(?=^### |^## |\Z)",
+        markdown,
+        re.MULTILINE | re.DOTALL,
+    )
+    if not match:
+        return set()
+    families = set()
+    for line in match.group("rows").splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2 or not cells[0].startswith("`"):
+            continue
+        family_stack = re.sub(r"\s*\([^)]*\)\s*$", "", cells[1]).strip(" `*")
+        family_stack = re.sub(r"\s+\*[^*]+\*\s*$", "", family_stack).strip()
+        for family in family_stack.split(","):
+            family = family.strip().strip("'\"")
+            if family:
+                families.add(family.casefold())
+    return families
 
 
 @dataclass
@@ -346,20 +487,44 @@ def diagram_slug(path):
     return path.stem.removeprefix("example-")
 
 
-def named_families(value):
+def named_families(value, allowed_fonts):
     families = []
     for raw_family in value.split(","):
         family = raw_family.strip().strip("'\"").strip()
         lowered = family.casefold()
         if not family or lowered in CSS_FONT_KEYWORDS or lowered.startswith("var("):
             continue
-        if lowered not in ALLOWED_FONTS:
+        if lowered not in allowed_fonts:
             families.append(family)
     return families
 
 
 def lint_text(text, colors, rgb_triplets, expected_slug):
     findings = lint_accessible_svgs(text, expected_slug)
+    allowed_fonts = ALLOWED_FONTS | style_guide_families()
+
+    resources = ResourceParser()
+    resources.feed(text)
+    resources.close()
+    allowed_fonts.update(resources.fonts)
+    for line, tag, attr, _value in resources.remote:
+        findings.append(
+            (
+                line,
+                0,
+                "external-asset",
+                f"external resource in <{tag}> {attr} is not allowed",
+            )
+        )
+    for line, tag, attr in resources.executable:
+        findings.append(
+            (
+                line,
+                0,
+                "script",
+                f"executable attribute {attr} on <{tag}> is not allowed",
+            )
+        )
 
     def add(offset, category, message):
         findings.append((line_number(text, offset), offset, category, message))
@@ -384,35 +549,73 @@ def lint_text(text, colors, rgb_triplets, expected_slug):
     for match in BLACK_RGB_RE.finditer(text):
         add(match.start(), "pure-black", "pure black rgb(0,0,0) is not allowed")
 
-    for match in SCRIPT_RE.finditer(text):
-        add(match.start(), "script", "<script> tags are not allowed")
+    script_blocks = {match.start(): match for match in SCRIPT_BLOCK_RE.finditer(text)}
+    script_openings = list(SCRIPT_OPEN_RE.finditer(text))
+    if len(script_openings) > 1:
+        add(
+            script_openings[1].start(),
+            "script",
+            "only one canonical motion controller is allowed",
+        )
+    canonical_digest = None
+    for match in script_openings:
+        attrs = match.group("attrs")
+        block = script_blocks.get(match.start())
+        canonical_attrs = attrs.strip().casefold() == "data-diagram-controls"
+        if not canonical_attrs:
+            add(
+                match.start(),
+                "script",
+                "only the canonical data-diagram-controls attribute is allowed",
+            )
+        elif block is None:
+            add(
+                match.start(),
+                "script",
+                "motion controller must have a closing script tag",
+            )
+        else:
+            if canonical_digest is None:
+                canonical_digest = canonical_controller_digest()
+            body = normalized_controller(block.group("body"))
+            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            if digest != canonical_digest:
+                add(
+                    match.start(),
+                    "script",
+                    "motion controller must exactly match template-motion.html",
+                )
 
     for match in SRC_HTTP_RE.finditer(text):
         add(match.start(), "external-asset", "external HTTP(S) src is not allowed")
 
-    import_spans = []
-    for match in IMPORT_HTTP_RE.finditer(text):
-        import_spans.append(match.span())
-        add(match.start(), "external-asset", "external HTTP(S) @import is not allowed")
+    for match in IMPORT_ANY_RE.finditer(text):
+        add(match.start(), "external-asset", "CSS @import is not allowed")
 
-    for match in URL_HTTP_RE.finditer(text):
-        if any(start <= match.start() < end for start, end in import_spans):
+    for match in URL_ANY_RE.finditer(text):
+        value = match.group(1).strip().strip("'\"").strip()
+        if value.startswith("#"):
             continue
-        add(match.start(), "external-asset", "external HTTP(S) url() is not allowed")
+        add(match.start(), "external-asset", "non-fragment CSS url() is not allowed")
 
     for link_match in LINK_RE.finditer(text):
         href_match = HREF_RE.search(link_match.group())
         if not href_match:
             continue
         href = href_match.group(2).strip()
-        if href.lower().startswith("https://fonts.googleapis.com"):
+        approved_families = google_fonts_families(href)
+        rel_match = REL_RE.search(link_match.group())
+        rel_values = rel_match.group(2).casefold().split() if rel_match else []
+        if approved_families and "stylesheet" in rel_values:
+            allowed_fonts.update(approved_families)
             continue
-        if href.lower().startswith(("http://", "https://")):
+        parsed_href = urlparse(href)
+        if parsed_href.scheme.casefold() in {"http", "https"} or parsed_href.netloc:
             href_offset = link_match.start() + href_match.start(2)
             add(href_offset, "external-asset", "external HTTP(S) <link> is not allowed")
 
     for match in FONT_CSS_RE.finditer(text):
-        unsupported = named_families(match.group(1))
+        unsupported = named_families(match.group(1), allowed_fonts)
         if unsupported:
             add(
                 match.start(),
@@ -421,7 +624,7 @@ def lint_text(text, colors, rgb_triplets, expected_slug):
             )
 
     for match in FONT_ATTR_RE.finditer(text):
-        unsupported = named_families(match.group(2))
+        unsupported = named_families(match.group(2), allowed_fonts)
         if unsupported:
             add(
                 match.start(),

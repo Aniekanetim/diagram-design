@@ -1,16 +1,16 @@
 ---
 name: diagram-design
-description: Create technical and product diagrams — architecture, IT current-state, flowchart, sequence, state machine, ER / data model, timeline, swimlane, quadrant, radar / spider, loop / flywheel, nested, tree, org chart, layer stack, venn, pyramid / funnel, bar chart, line chart, Gantt, scatter plot, high-level, process, medallion, data flow, DP integration, DP security matrix — as standalone HTML files with inline SVG. Also imports existing draw.io / diagrams.net files (.drawio, .drawio.png, .drawio.svg) and Mermaid source (.mmd, .mermaid, or Markdown fences), redrawing them at a chosen output format (HTML / SVG / PNG), canvas size (slide, social card, doc, print), and level of detail (faithful reproduction or simplified for the audience's technical level). Ships with a neutral editorial skin and a first-run gate that prompts users to customize the style guide (colors, fonts) from their own website before generating. Includes annotation-callout primitive and optional sketchy variant.
+description: Create branded technical and product diagrams in 27 visual types, with semantic patterns, optional accessible motion, and .drawio/Mermaid import.
 license: MIT
 metadata:
-  version: "2.2"
+  version: "2.3"
 ---
 
 # Diagram Design
 
 Create visual diagrams as self-contained HTML files with inline SVG and CSS, following an opinionated editorial design system.
 
-Twenty-seven diagram types. One shared design system, complexity budget, and taste gate. Type-specific conventions live in `references/` and are loaded only when you pick a type.
+Twenty-seven visual types. Semantic patterns describe behavior independently; type references describe layout. Details load from `references/` only when selected.
 
 ---
 
@@ -32,15 +32,11 @@ Then branch:
 
 **Once the style guide has been customized** (or the user explicitly opted for default), skip this gate on subsequent runs. A simple way to detect customization: if the `accent` value in `style-guide.md` differs from `#b5523a`, assume custom.
 
-Don't silently ship default-skinned diagrams into a branded project — that's the failure mode this gate exists to prevent.
-
 ---
 
 ## 1. Philosophy
 
 **The highest-quality move is usually deletion.**
-
-From `.impeccable.md`: *"Confident restraint. Earn every element. One color accent, two families, a small spacing vocabulary. If removing it wouldn't hurt the page, remove it."*
 
 Applied to schematics:
 
@@ -68,9 +64,23 @@ Before drawing, ask: *Would the reader learn more from this than from a well-wri
 
 ---
 
-## 3. Diagram Types
+## 3. Selection: semantic pattern, then visual type
 
-### Selection guide
+When behavior, state, enforcement, or risk carries the meaning, first load [`references/semantic-patterns.md`](references/semantic-patterns.md) and choose one primary pattern. Then choose the nearest visual type for layout. If no pattern matches, choose the type directly.
+
+| Behavioral trigger | Semantic pattern → nearest type |
+|---|---|
+| Fan-in, queue depth, finite capacity, bottleneck | **Fan-in queue / bottleneck** → Data flow |
+| Repeated Question / Input / Governance / Output slots across stages | **Stage framework with semantic slots** → Process |
+| Conversation or loose input becomes a structured durable artifact | **Unstructured input → structured artifact** → Data flow |
+| Two rule traces need pass/fail/skipped/not-reached and first divergence | **Paired policy-evaluation traces** → Flowchart |
+| Trust boundaries plus permitted/forbidden ingress or deploy paths | **Secure paved road** → Architecture |
+| Controls grouped by where they are enforced | **Governance / control catalog** → Layer stack |
+| Defenses compensate for prior gaps and residual risk propagates | **Compensating security layers** → Layer stack |
+
+The pattern owns semantic primitives and its tighter budget; the type owns layout grammar. Use [`references/animation.md`](references/animation.md) only when motion is requested or materially clarifies ordered change; static remains the default.
+
+### Visual-type guide (27)
 
 | If you're showing… | Use | Reference |
 |---|---|---|
@@ -105,10 +115,10 @@ Before drawing, ask: *Would the reader learn more from this than from a well-wri
 Rules of thumb:
 
 - If a 3-column table communicates the same thing, pick the table.
-- If you're combining two types, pick the dominant axis — don't hybridize grammars.
+- If two types seem useful, pick the dominant axis; a semantic pattern may add behavior-specific primitives, not a second layout grammar.
 - If you're past the complexity budget (§7), split into an overview + detail.
 
-**Always load the relevant `references/type-*.md` before drawing** — it contains layout conventions, anti-patterns, and example files for that type.
+**Always load the chosen `references/type-*.md` before drawing.** When routed above, also load `semantic-patterns.md`; when animation is chosen, load `animation.md`.
 
 ---
 
@@ -195,6 +205,7 @@ Universal building blocks. Type-specialized primitives (lifeline, activation bar
 - Hand-drawn variant → [primitive-sketchy.md](references/primitive-sketchy.md)
 - Icon set (laptop, server, DB, K8s, Docker, AWS, …) → [primitive-icons.md](references/primitive-icons.md). Browse the gallery at [`assets/icons.html`](assets/icons.html).
 - Terminal / CLI-window variant → [primitive-terminal.md](references/primitive-terminal.md)
+- Optional explanatory motion → [animation.md](references/animation.md)
 
 ### Background
 
@@ -366,6 +377,7 @@ Quick check: if a coordinate ends in 1, 2, 3, 5, 6, 7, 9 — fix it.
 | Max tasks (Gantt) | 12 |
 | Max points (scatter plot) | 30 |
 | Max annotation callouts | 2 |
+| Max motion (optional) | 8 steps, 12 marked items, 2 simultaneous items — see [animation.md](references/animation.md) |
 
 If you exceed, split into two diagrams (overview + detail).
 
@@ -409,7 +421,8 @@ Run before producing any diagram.
 
 **Type fit:**
 
-- [ ] Right type for what I'm showing? (§3 selection guide)
+- [ ] If behavior matters, did I choose one semantic pattern before the visual type and load `semantic-patterns.md`?
+- [ ] Right visual type for the layout? (§3 visual-type guide)
 - [ ] Would a table / paragraph do the same job? (If yes — don't draw.)
 - [ ] Loaded the matching `references/type-*.md`?
 - [ ] If this is an import — format, size, detail level, and audience set? `viewBox` and type ramp match the size preset? (§11, [output-spec.md §6](references/output-spec.md))
@@ -444,9 +457,11 @@ Run before producing any diagram.
 - [ ] No vertical `writing-mode` text?
 - [ ] `viewBox` expanded for the legend strip (~60px)?
 - [ ] Every font size, coord, width, height, gap divisible by 4?
+- [ ] If animated, does the complete static/no-JS frame work, does reduced motion hide/disable playback, is the controller copied verbatim from `template-motion.html`, and did I run `verify-motion.py --shipped` plus the skin linter?
 
 **Typography:**
 
+- [ ] Brand match uses exact public families/weights, verified via `getComputedStyle`; fallbacks disclosed?
 - [ ] Human-readable names in Geist sans, not Geist Mono?
 - [ ] Technical sublabels (ports, commands, URLs) in Geist Mono?
 - [ ] Page title in Instrument Serif?
@@ -470,12 +485,15 @@ Every diagram ships in three variants (see `assets/`):
 
 **Terminal variant** (optional, replaces any of the above) — see [primitive-terminal.md](references/primitive-terminal.md). `template-terminal.html`, `example-<type>-terminal.html`. Charcoal-black CLI-window chrome, monospace type, one red-orange accent. Good for dev-tool / CLI-product posts and technical social cards; not brand-tokenized, so skip it for onboarded/brand-matched output.
 
+**Animation** (optional presentation layer) — see [animation.md](references/animation.md). Modes are `none` (default), `reveal`, `step`, and `loop`; motion never changes the static meaning or raises the complexity budget.
+
 ### To create a new diagram
 
-1. Copy the variant closest to what you want (`template.html` for minimal, `template-full.html` for cards).
-2. Load the matching `references/type-<name>.md` for layout conventions.
-3. Replace the eyebrow, h1, and SVG body. Replace `[diagram-slug]` with the file's diagram/variant slug, fill the copied `<title>` / `<desc>` placeholders, and do not delete them.
-4. Run the §9 taste gate.
+1. Copy the variant closest to what you want (`template.html` for minimal, `template-full.html` for cards, `template-motion.html` only when motion is requested).
+2. If behavior is load-bearing, choose a semantic pattern; then load the matching `references/type-<name>.md`.
+3. Replace the eyebrow, h1, and SVG body. Replace `[diagram-slug]` with the file slug and fill `<title>` / `<desc>`.
+4. If motion is requested, load `animation.md`; otherwise keep mode `none` and no script.
+5. Run the §9 taste gate.
 
 ---
 
@@ -516,9 +534,9 @@ Always produce a single self-contained `.html` file:
 
 - Embedded CSS (no external except Google Fonts)
 - Inline SVG (no external images)
-- No JavaScript required
+- Static by default; minimal inline JavaScript only for explicit animation controls/state
 
-Renders correctly in any modern browser.
+Renders correctly in any modern browser. Motion-enabled output must render its complete meaning without JavaScript; under `prefers-reduced-motion: reduce` it shows the complete static frame and hides/disables playback controls.
 
 ### Accessible SVG contract
 

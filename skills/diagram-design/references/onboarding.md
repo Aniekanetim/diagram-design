@@ -77,6 +77,18 @@ Read the rendered `font-family` stack of:
 
 If the site has only one family, keep the schematic defaults for the missing roles (Instrument Serif for title, Geist Mono for mono). Don't force-pick a mono font that isn't on the site.
 
+### Exact-font gate for brand-matched output
+
+Do not replace a detected brand family with `serif`, `system-ui`, or `ui-monospace` merely to make the file dependency-free. A public font is part of the visual system.
+
+1. Record the computed family and weight used by the sampled heading, body, and technical-label elements.
+2. Trace each family to its source: an existing Google Fonts stylesheet, an installed/system stack, or a custom-hosted `@font-face`.
+3. If it is available through Google Fonts, carry the exact family name, weights, and approved stylesheet into the style guide and generated HTML. The single-file allowlist accepts only a parsed HTTPS URL whose hostname is exactly `fonts.googleapis.com` and whose path is exactly `/css2`; prefix/lookalike hosts and other paths fail. Preserve an intentional system stack in order and verify the resolved family on the target machine.
+4. A custom-hosted or paid font is not compatible with the default single-file allowlist. Label that role `fallback` unless the user separately approves and packages the font; never silently add a remote font URL or claim an exact match.
+5. Verify the rendered output with `getComputedStyle`; a declared family that failed to load does not pass.
+
+For a page containing bespoke diagrams or editorial figures, inspect their rendered font roles as well as the surrounding article. A figure-specific stylesheet may intentionally differ from the site's global heading/body stack.
+
 ---
 
 ## Step 3 — map to semantic roles
@@ -119,6 +131,16 @@ Show the user what will change in `style-guide.md`. Only the tokens table — ev
 ```
 
 Also regenerate the dark variant via the inversion rule (`rgba(11,13,11, X)` → `rgba(ink-rgb, X)`).
+
+Include a compact **brand fidelity receipt** with the preview:
+
+- sampled URLs;
+- detected paper, ink, muted, accent, surface, and rule values;
+- title, body, and technical-label families with weights and source URLs;
+- `exact` or `fallback` for each font role;
+- any page-specific figure styling that should override the global site skin.
+
+The receipt is required when the user says “match this site,” “use their branding,” or provides a page as the visual reference.
 
 ---
 

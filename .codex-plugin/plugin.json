@@ -1,7 +1,7 @@
 {
   "name": "diagram-design",
-  "description": "Editorial-quality technical and product diagrams - 27 types rendered as standalone HTML with inline SVG, skinnable to match your brand, plus draw.io and Mermaid import at a chosen format, size, and level of detail",
-  "version": "2.2.0",
+  "description": "Branded diagrams across 27 visual types, with semantic system patterns, optional accessible motion, and draw.io or Mermaid import",
+  "version": "2.3.0",
   "author": {
     "name": "Cathryn Lavery",
     "url": "https://github.com/cathrynlavery"
@@ -18,13 +18,15 @@
     "editorial",
     "drawio",
     "mermaid",
-    "import"
+    "import",
+    "animation",
+    "semantic-patterns"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Diagram Design",
     "shortDescription": "Create editorial technical and product diagrams as standalone HTML.",
-    "longDescription": "Generate architecture, flowchart, sequence, state machine, ER, timeline, swimlane, quadrant, nested, tree, layers, venn, and pyramid diagrams with an opinionated editorial design system.",
+    "longDescription": "Generate branded technical and product diagrams with semantic system patterns, optional accessible motion, and an opinionated editorial design system.",
     "developerName": "Cathryn Lavery",
     "category": "Productivity",
     "capabilities": [
