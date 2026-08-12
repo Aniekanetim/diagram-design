@@ -120,6 +120,13 @@ def main() -> int:
             directory,
         )
         require_failure(
+            "wrong-file-slug",
+            VALID_SVG,
+            'accessible-name IDs must match file slug "wrong-file-slug": '
+            'expected "wrong-file-slug-title" / "wrong-file-slug-desc"',
+            directory,
+        )
+        require_failure(
             "placeholder-ids",
             VALID_SVG.replace("fixture-title", "[diagram-slug]-title").replace(
                 "fixture-desc", "[diagram-slug]-desc"
@@ -161,9 +168,12 @@ def main() -> int:
             "logz": build_icons.normalize_logz("<svg><path/></svg>"),
         }
         for source, icon in generated_icons.items():
+            slug = f"generated-{source}-icon"
             require_pass(
-                f"generated-{source}-icon",
-                VALID_SVG.replace("</svg>", f"  {icon}\n</svg>"),
+                slug,
+                VALID_SVG.replace("fixture-title", f"{slug}-title")
+                .replace("fixture-desc", f"{slug}-desc")
+                .replace("</svg>", f"  {icon}\n</svg>"),
                 directory,
             )
 

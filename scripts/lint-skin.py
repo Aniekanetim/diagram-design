@@ -168,7 +168,7 @@ class AccessibleSvgParser(HTMLParser):
             element.text.append(data)
 
 
-def lint_accessible_svgs(text):
+def lint_accessible_svgs(text, expected_slug):
     parser = AccessibleSvgParser(text)
     parser.feed(text)
     parser.close()
@@ -265,6 +265,18 @@ def lint_accessible_svgs(text):
                 'bare id="title" and id="desc" are not allowed',
             )
 
+        expected_title_id = f"{expected_slug}-title"
+        expected_description_id = f"{expected_slug}-desc"
+        if not placeholder_ids and (
+            title_id != expected_title_id or description_id != expected_description_id
+        ):
+            add(
+                svg.line,
+                svg.offset,
+                f'accessible-name IDs must match file slug "{expected_slug}": '
+                f'expected "{expected_title_id}" / "{expected_description_id}"',
+            )
+
         if (
             labelled_by
             and (title_id not in labelled_by or description_id not in labelled_by)
@@ -330,6 +342,10 @@ def display_path(path):
         return str(path)
 
 
+def diagram_slug(path):
+    return path.stem.removeprefix("example-")
+
+
 def named_families(value):
     families = []
     for raw_family in value.split(","):
@@ -342,8 +358,8 @@ def named_families(value):
     return families
 
 
-def lint_text(text, colors, rgb_triplets):
-    findings = lint_accessible_svgs(text)
+def lint_text(text, colors, rgb_triplets, expected_slug):
+    findings = lint_accessible_svgs(text, expected_slug)
 
     def add(offset, category, message):
         findings.append((line_number(text, offset), offset, category, message))
@@ -473,10 +489,11 @@ def main():
         try:
             text = path.read_text(encoding="utf-8")
             relative = display_path(path)
+            expected_slug = diagram_slug(path)
             if args.baseline and (path.name in baseline or relative in baseline):
-                findings = lint_accessible_svgs(text)
+                findings = lint_accessible_svgs(text, expected_slug)
             else:
-                findings = lint_text(text, colors, rgb_triplets)
+                findings = lint_text(text, colors, rgb_triplets, expected_slug)
         except OSError as error:
             findings = [(0, 0, "read-error", str(error))]
 
