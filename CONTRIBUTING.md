@@ -8,7 +8,7 @@ Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) first. All contributions ar
 
 ## What this project is
 
-Diagram Design is an agent skill (Claude Code, Codex, Pi) that produces editorial-quality diagrams as self-contained HTML files. The repo is documentation-first: `skills/diagram-design/SKILL.md` is the index, each of the 27 diagram types has its own reference file, and the extractor scripts in `skills/diagram-design/scripts/` turn draw.io and Mermaid sources into a structured IR.
+Diagram Design is an agent skill (Claude Code, Codex, Pi) that produces editorial-quality diagrams as self-contained HTML files. The repo is documentation-first: `skills/diagram-design/SKILL.md` is the index, each of the 27 visual types has its own reference file, and the extractor scripts in `skills/diagram-design/scripts/` turn draw.io and Mermaid sources into a structured IR.
 
 See [README.md](README.md) for the full picture, including the design system and the import/export flows.
 
@@ -30,26 +30,36 @@ Every validation gate below must pass before a PR is ready. They also run automa
 | What it checks | Command |
 |---|---|
 | Accessible SVG contract (unit tests for the a11y linter) | `python3 scripts/test-lint-a11y.py` |
-| Skin conformance of every example (colors, fonts, a11y) | `python3 scripts/lint-skin.py --all --baseline` |
+| Semantic-pattern routing | `python3 scripts/verify-semantic-motion.py --markdown-only` |
+| Animated-example structure and accessibility | `python3 scripts/verify-semantic-motion.py --example-only` |
+| Skin conformance of every example and template (colors, fonts, a11y, assets, scripts) | `python3 scripts/lint-skin.py --all --baseline` |
 | A single file, e.g. a new example | `python3 scripts/lint-skin.py skills/diagram-design/assets/example-my-type.html` |
 | Sequence-doc consistency (ATL fragments, budgets) | `python3 scripts/verify-sequence-oauth.py` |
 | draw.io import path (real extractor vs fixtures + docs sync) | `python3 scripts/verify-drawio-import.py` |
 | Mermaid import path (grammars, adversarial input, caps, docs sync) | `python3 scripts/verify-mermaid-import.py` |
+| Optional motion contract (fallbacks, controls, budgets, determinism) | `python3 scripts/test-verify-motion.py` |
+| Every shipped motion template/example | `python3 scripts/verify-motion.py --shipped` |
 | Generated icon assets are up to date (`icons.html`, `primitive-icons.md`) | `python3 scripts/build-icons.py` then `git diff --exit-code` on the two generated files |
+
+The semantic-pattern gate also caps `skills/diagram-design/SKILL.md` at 40,000 bytes so the installed skill remains practical to load. If that gate fails, reduce duplication or move detail into a routed reference; do not remove routing vocabulary from frontmatter.
 
 Run them all at once before pushing:
 
 ```bash
 python3 scripts/test-lint-a11y.py \
+  && python3 scripts/verify-semantic-motion.py --markdown-only \
+  && python3 scripts/verify-semantic-motion.py --example-only \
+  && python3 scripts/verify-motion.py --shipped \
   && python3 scripts/lint-skin.py --all --baseline \
   && python3 scripts/verify-sequence-oauth.py \
   && python3 scripts/verify-drawio-import.py \
-  && python3 scripts/verify-mermaid-import.py
+  && python3 scripts/verify-mermaid-import.py \
+  && python3 scripts/test-verify-motion.py
 ```
 
 ### If a gate fails
 
-- **`lint-skin.py`:** the failure message names the file, line, and category (`color`, `font-family`, `a11y`, `external-asset`, `pure-black`, `script`). Colors must come from the palette in `skills/diagram-design/references/style-guide.md`; fonts from the allowed list; diagrams must satisfy the accessible SVG contract (see below).
+- **`lint-skin.py`:** the failure message names the file, line, and category (`color`, `font-family`, `a11y`, `external-asset`, `pure-black`, `script`). Colors must come from the palette in `skills/diagram-design/references/style-guide.md`; fonts from the allowed list; diagrams must satisfy the accessible SVG contract (see below). The linter also requires the SHA-pinned controller from `template-motion.html` verbatim and rejects remote resources, CSS `@import`, non-fragment CSS `url()`, event handlers, `srcdoc`, executable URLs, and extra scripts.
 - **`verify-*.py`:** the extractor's real behavior no longer matches its fixture or the documentation, or the reference/command/prompt wiring drifted. Fix the source of truth — do not widen a test to avoid a failure.
 - **Icon assets:** you changed `scripts/vendor/icons/` or `scripts/build-icons.py` and the generated files went stale. Rerun `python3 scripts/build-icons.py` and commit the regenerated files.
 
@@ -85,6 +95,8 @@ python3 scripts/lint-skin.py skills/diagram-design/assets/example-my-type.html
 ```
 
 New examples should be added to the gallery (`assets/index.html`) so they stay browsable.
+
+Motion is opt-in. Start from `skills/diagram-design/assets/template-motion.html`, follow `references/animation.md`, and run `python3 scripts/verify-motion.py <file>` plus `python3 scripts/test-verify-motion.py`. A motion file must preserve complete no-JavaScript, reduced-motion, print, screenshot, and export states. Keep the controller byte-for-byte identical to the template; changes require updating the canonical template, example, documentation, and adversarial tests together.
 
 ## Adding a new diagram type
 

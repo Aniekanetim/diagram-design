@@ -8,7 +8,9 @@
 
 *New in 2.0 — the Loop: flywheels with a shared-memory hub. The dashed lines are the write-backs.*
 
-27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram. Already have diagrams in draw.io or Mermaid? Point it at the source and it redraws them at the format, size, and level of detail your audience needs.
+*New in 2.3: semantic system patterns and optional accessible motion, while static output stays the default.*
+
+27 visual types. One agent skill for Claude Code, Codex, and Pi. Semantic patterns describe behavior separately from layout, so a queue, policy trace, or trust boundary can use the nearest existing type without expanding the type count. Static HTML remains the default; optional motion is available for ordered explanations. The skill also redraws draw.io or Mermaid sources at a chosen format, size, and detail level.
 
 No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
@@ -18,7 +20,7 @@ No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
 I write at [littlemight.com](https://littlemight.com?utm_source=diagram-design&utm_medium=readme&utm_campaign=github&utm_content=intro) (and run [BestSelf.co](https://bestself.co?utm_source=diagram-design&utm_medium=readme&utm_campaign=github&utm_content=intro) on the side). Every time I needed a diagram — an architecture sketch, a flowchart, a pyramid of what matters most — I'd ask Claude and get back a generic rounded-box thing that looked nothing like the rest of the site. I'd either fight with Figma for 30 minutes or just skip the diagram.
 
-So I built a Claude Code skill for it. Twenty-seven types, editorial quality, matches your brand in 60 seconds by reading your website.
+So I built a Claude Code skill for it. Twenty-seven visual types, editorial quality, matches your brand in 60 seconds by reading your website.
 
 > *The highest-quality move is usually deletion.* Every node earns its place. The accent color is reserved for the 1–2 things the reader should look at first. Target density: 4/10.
 
@@ -26,7 +28,7 @@ So I built a Claude Code skill for it. Twenty-seven types, editorial quality, ma
 
 ## What it makes
 
-All 27 diagrams ship in three variants: minimal light, minimal dark, and full-editorial. Open any of them directly in a browser — no build step, no JS, no external images.
+All 27 visual types ship in three static variants: minimal light, minimal dark, and full-editorial. Open any of them directly in a browser. There is no build step, JavaScript, or external image dependency.
 
 <table>
 <tr>
@@ -149,6 +151,8 @@ You:     "yes, apply it"
 
 Every new diagram now uses your colors. Your website's paper color becomes the diagram background. Your CTA color becomes the focal accent. Your body font stack becomes the node label family.
 
+Brand matching also emits a fidelity receipt: sampled URLs, exact color roles, font families and weights, font source URLs, and any fallback. Public site fonts are used directly and verified after rendering rather than silently replaced with generic system fonts.
+
 ### What gets extracted
 
 | Detected from your site | Becomes |
@@ -204,7 +208,14 @@ Your agent will pick the right type, build the HTML, and save it. You can also s
 ```bash
 cp skills/diagram-design/assets/template.html my-diagram.html        # minimal light
 cp skills/diagram-design/assets/template-full.html my-diagram.html   # editorial with summary cards
+cp skills/diagram-design/assets/template-motion.html my-diagram.html # optional accessible motion
 ```
+
+### Semantic patterns and optional motion
+
+When behavior matters, the skill chooses a semantic pattern first and a visual type second. The seven routed patterns cover fan-in queues and bottlenecks, repeated stage slots, unstructured-input transformation, paired policy traces, secure paved roads, governance catalogs, and compensating security layers. Each pattern defines its triggers, primitives, budget, anti-patterns, static fallback, and nearest visual type in [`semantic-patterns.md`](skills/diagram-design/references/semantic-patterns.md).
+
+Motion is optional and does not create another visual type. [`animation.md`](skills/diagram-design/references/animation.md) defines `none`, `reveal`, `step`, and `loop` modes with a complete static first frame, deterministic timing, and controls when interaction is available. Reduced-motion output shows the complete static frame and hides/disables playback controls. Motion HTML uses the exact reviewed controller from `template-motion.html`; arbitrary or modified inline scripts, remote assets, CSS imports, and executable HTML attributes are rejected. The default is `none`: ordinary output remains static and script-free. [`example-policy-trace-animated.html`](skills/diagram-design/assets/example-policy-trace-animated.html) is the self-contained interactive example.
 
 ---
 
@@ -285,11 +296,13 @@ Or just ask in natural language:
 
 Both formats are diagram-only — editorial cards and headers from `-full` variants aren't included. For a screenshot of the full editorial layout, use your browser's print-to-PDF or full-page screenshot. See [`skills/diagram-design/references/export.md`](skills/diagram-design/references/export.md) for the full procedure.
 
+For motion-enabled HTML, export the explicit final state: open `?motion=static`, wait for `document.fonts.ready`, and confirm the motion root has `data-frame="static"` before capture. Use `?motion=step&step=N` only when a named intermediate frame was requested.
+
 ---
 
 ## Architecture
 
-Progressive disclosure. `SKILL.md` is a lean index — it tells the agent how to pick a type and where to look for detail. Every type lives in its own reference file, loaded only when relevant.
+Progressive disclosure. `SKILL.md` routes behavior first when needed, then layout. Semantic, type, and animation references load only when relevant.
 
 ```
 diagram-design/
@@ -305,6 +318,8 @@ diagram-design/
 │       ├── SKILL.md                 — philosophy, selection guide, checklist
 │       ├── references/              — loaded only when a type or primitive is chosen
 │       │   ├── style-guide.md       — single source of truth for colors + fonts
+│       │   ├── semantic-patterns.md — behavior patterns independent of layout
+│       │   ├── animation.md         — optional motion + accessibility contract
 │       │   ├── onboarding.md        — the URL-to-tokens flow
 │       │   ├── import-drawio.md     — draw.io redraw procedure
 │       │   ├── import-mermaid.md    — Mermaid redraw procedure
@@ -338,6 +353,7 @@ diagram-design/
 │           ├── example-quadrant-consultant.html
 │           ├── example-import-drawio.html
 │           ├── example-import-mermaid.html
+│           ├── example-policy-trace-animated.html
 │           └── example-sequence-oauth*.html
 ├── scripts/fixtures/
 │   ├── sample-flowchart.mmd
@@ -346,14 +362,15 @@ diagram-design/
 └── docs/screenshots/                — images used in this README
 ```
 
-This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 37 reference files covering every diagram type, primitive, and utility.
+This keeps the agent's working context tight: routine diagrams load one type reference; behavior-rich diagrams add the routed semantic reference; animation adds its contract only when selected.
 
 ### Contributing / skin lint
 
 Before submitting a new example, run `python3 scripts/lint-skin.py <your-new-example.html>`.
-The repository-wide check `python3 scripts/lint-skin.py --all --baseline` must stay green.
+The repository-wide check `python3 scripts/lint-skin.py --all --baseline` covers examples and templates and must stay green.
+CI separately verifies semantic routing, animated-example structure, animated skin, every shipped motion asset, and adversarial mutations of the controller contract, reporting later gate outcomes even when an earlier gate fails. Semantic routing must pass `python3 scripts/verify-semantic-motion.py --markdown-only`; the animated example has a separate `--example-only` gate. Every shipped motion template/example must also pass `python3 scripts/verify-motion.py --shipped`.
 The linter's `a11y` category rejects diagram SVGs without a resolving accessible name,
-an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs.
+an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs. It also pins the exact reviewed motion controller and rejects remote assets, CSS `@import`, non-fragment CSS `url()`, and executable attributes such as `onclick` or `srcdoc`.
 If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` must also pass —
 it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
 container formats and checks the references stay in sync.
@@ -365,19 +382,21 @@ All pull requests and pushes are automatically validated across Linux, Windows, 
 
 ### What loads when
 
-At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 37 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; semantic, type, and animation references are pulled in only when relevant.
 
 | You ask for… | Agent loads |
 |---|---|
 | "Make me a flowchart" | `SKILL.md` + `references/type-flowchart.md` |
 | "Build an architecture diagram" | `SKILL.md` + `references/type-architecture.md` |
+| "Compare why these two policy requests differ" | `SKILL.md` + `references/semantic-patterns.md` + `references/type-flowchart.md` |
+| "Animate that policy trace" | Prior selection + `references/animation.md` |
 | "Onboard this skill to my site" | `SKILL.md` + `references/onboarding.md` + `references/style-guide.md` |
 | "Add an editorial callout to this diagram" | `SKILL.md` + `references/primitive-annotation.md` |
 | "Give me a hand-drawn version" | `SKILL.md` + `references/primitive-sketchy.md` |
 | "Give me a terminal / CLI-window version" | `SKILL.md` + `references/primitive-terminal.md` |
 | "Redraw this .drawio file for my deck" | `SKILL.md` + `references/import-drawio.md` + `references/output-spec.md` + the chosen type's reference |
 | "Redraw this Mermaid block for my deck" | `SKILL.md` + `references/import-mermaid.md` + `references/output-spec.md` + the chosen type's reference |
-| Routine diagram-making (any of the 27 diagrams) | Only `SKILL.md` + that one type's reference |
+| Routine static diagram-making (any of the 27 visual types) | Only `SKILL.md` + that one type's reference |
 
 No matter how many types exist, the agent only reads the one you need. Add a new type tomorrow and nothing else changes.
 
