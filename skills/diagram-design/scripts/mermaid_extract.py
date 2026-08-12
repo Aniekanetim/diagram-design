@@ -373,7 +373,59 @@ def _split_top_level(text: str, delimiter: str) -> list[str]:
     return parts
 
 
+def _statement_complete(text: str) -> bool:
+    """Return whether quotes and node delimiters close within a statement."""
+    stack: list[str] = []
+    quote: str | None = None
+    escaped = False
+    pairs = {"]": "[", ")": "(", "}": "{"}
+    for character in text:
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in "\"'`":
+            quote = character
+        elif character in "[({":
+            stack.append(character)
+        elif character in "])}":
+            if stack and stack[-1] == pairs[character]:
+                stack.pop()
+    return quote is None and not stack
+
+
+def _logical_statements(
+    lines: list[tuple[int, str]],
+) -> list[tuple[int, str]]:
+    """Join multiline Mermaid strings before parsing semicolon statements."""
+    logical: list[tuple[int, str]] = []
+    pending: list[str] = []
+    start_line = 0
+    for line_number, raw in lines:
+        if not pending and not raw.strip():
+            continue
+        if not pending:
+            start_line = line_number
+        pending.append(raw)
+        combined = "\n".join(pending)
+        if not _statement_complete(combined):
+            continue
+        logical.extend(
+            (start_line, statement)
+            for statement in _split_top_level(combined, ";")
+        )
+        pending = []
+    if pending:
+        _fail(f"unterminated statement at line {start_line}")
+    return logical
+
+
 SHAPE_FOR_DELIMITERS = (
+    ("(((", ")))", "circle"),
     ("((", "))", "circle"),
     ("([", "])", "stadium"),
     ("{{", "}}", "hexagon"),
@@ -388,6 +440,60 @@ SHAPE_FOR_DELIMITERS = (
     ("{", "}", "rhombus"),
     (">", "]", "asymmetric"),
 )
+
+EXPANDED_SHAPE_FAMILIES = {
+    "rect": "rect",
+    "rectangle": "rect",
+    "proc": "rect",
+    "process": "rect",
+    "rounded": "round",
+    "event": "round",
+    "stadium": "stadium",
+    "pill": "stadium",
+    "terminal": "stadium",
+    "circle": "circle",
+    "circ": "circle",
+    "sm-circ": "circle",
+    "small-circle": "circle",
+    "start": "circle",
+    "dbl-circ": "circle",
+    "double-circle": "circle",
+    "fr-circ": "circle",
+    "framed-circle": "circle",
+    "stop": "circle",
+    "cyl": "cylinder",
+    "cylinder": "cylinder",
+    "database": "cylinder",
+    "db": "cylinder",
+    "h-cyl": "cylinder",
+    "horizontal-cylinder": "cylinder",
+    "lin-cyl": "cylinder",
+    "lined-cylinder": "cylinder",
+    "diam": "rhombus",
+    "decision": "rhombus",
+    "diamond": "rhombus",
+    "question": "rhombus",
+    "hex": "hexagon",
+    "hexagon": "hexagon",
+    "prepare": "hexagon",
+    "fr-rect": "subroutine",
+    "framed-rectangle": "subroutine",
+    "subproc": "subroutine",
+    "subprocess": "subroutine",
+    "subroutine": "subroutine",
+    "lean-r": "parallelogram",
+    "lean-l": "parallelogram",
+    "in-out": "parallelogram",
+    "lean-right": "parallelogram",
+    "lean-left": "parallelogram",
+    "out-in": "parallelogram",
+    "trap-t": "trapezoid",
+    "trap-b": "trapezoid",
+    "trapezoid": "trapezoid",
+    "inv-trapezoid": "trapezoid",
+    "manual": "trapezoid",
+    "priority": "trapezoid",
+}
 
 
 def classify_shape(expression: str) -> str:
@@ -410,6 +516,37 @@ def _strip_class_suffix(text: str) -> str:
     return (text[:index] + text[end:]).strip()
 
 
+def _parse_expanded_attributes(text: str) -> tuple[str, str] | None:
+    """Normalize Mermaid v11.3+ ``@{ ... }`` node attributes.
+
+    Only semantic label/shape data crosses the trust boundary. Image URLs,
+    registered icon names, dimensions, and renderer configuration are dropped.
+    """
+    if not text.startswith("@{") or not text.endswith("}"):
+        return None
+    values: dict[str, str] = {}
+    for raw_attribute in _split_top_level(text[2:-1], ","):
+        key, separator, raw_value = raw_attribute.partition(":")
+        if not separator:
+            continue
+        key = key.strip().casefold()
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*", key):
+            continue
+        values[key] = clean_label(raw_value)
+    shape_name = values.get("shape", "").casefold()
+    if not shape_name:
+        if "img" in values:
+            shape_name = "image"
+        elif "icon" in values:
+            shape_name = "icon"
+        else:
+            shape_name = "rect"
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", shape_name):
+        shape_name = "rect"
+    shape = EXPANDED_SHAPE_FAMILIES.get(shape_name, shape_name)
+    return values.get("label", ""), shape
+
+
 def _parse_node_expression(expression: str) -> tuple[str, str, str] | None:
     text = _strip_class_suffix(expression.strip().rstrip(";").strip())
     if not text:
@@ -421,6 +558,10 @@ def _parse_node_expression(expression: str) -> tuple[str, str, str] | None:
     rest = text[match.end() :].strip()
     if not rest:
         return node_id, node_id, "rect"
+    expanded = _parse_expanded_attributes(rest)
+    if expanded is not None:
+        label, shape = expanded
+        return node_id, label or node_id, shape
     for opening, closing, _shape in SHAPE_FOR_DELIMITERS:
         if rest.startswith(opening) and rest.endswith(closing):
             label = rest[len(opening) : len(rest) - len(closing)]
@@ -443,7 +584,9 @@ def _operator_style(token: str) -> tuple[str, str, bool, bool]:
     style = "dashed" if "." in token else "thick" if "=" in token else "solid"
     arrowhead = "cross" if token.endswith("x") else "circle" if token.endswith("o") else "arrow"
     undirected = ">" not in token and not token.endswith(("x", "o"))
-    bidirectional = token.startswith("<") and token.endswith(">")
+    bidirectional = (
+        token.startswith("<") and token.endswith(">")
+    ) or (token.startswith(("x", "o")) and token.endswith(("x", "o")))
     return style, arrowhead, bidirectional, undirected
 
 
@@ -474,7 +617,9 @@ def _edge_operators(text: str) -> list[_Operator]:
         )
         occupied.append((match.start(), match.end()))
 
-    pattern = re.compile(r"<[-=.]+>|-+\.-+>|=+>|-+(?:>|x|o)|-+\.-+|={3,}|-{3,}")
+    pattern = re.compile(
+        r"[xo][-=.]+[xo]|<[-=.]+>|-+\.-+>|=+>|-+(?:>|x|o)|-+\.-+|={3,}|-{3,}"
+    )
     for match in pattern.finditer(mask):
         if any(start <= match.start() < end for start, end in occupied):
             continue
@@ -492,6 +637,7 @@ def _edge_operators(text: str) -> list[_Operator]:
                 match.start(), end, label, style, arrowhead, bidirectional, undirected
             )
         )
+        occupied.append((match.start(), end))
     return sorted(operators, key=lambda operator: operator.start)
 
 
@@ -527,12 +673,7 @@ def _parse_flowchart(
     diagram: Diagram, lines: list[tuple[int, str]], header_position: int
 ) -> None:
     containers: list[str] = []
-    statements = (
-        (line_number, statement)
-        for line_number, raw in lines[header_position + 1 :]
-        for statement in _split_top_level(raw, ";")
-    )
-    for line_number, raw in statements:
+    for line_number, raw in _logical_statements(lines[header_position + 1 :]):
         text = raw.strip()
         if not text:
             continue
@@ -606,7 +747,8 @@ def _parse_sequence(
         r"^(participant|actor)\s+([\w.:-]+)(?:\s+as\s+(.+))?$", re.I
     )
     message_re = re.compile(
-        r"^([\w.:-]+?)\s*(--?>>|--?>|--?\)|--?x)\s*([\w.:-]+)\s*:\s*(.*)$"
+        r"^([\w.:-]+?)(?:\(\))?\s*(--?>>|--?>|--?\)|--?x)"
+        r"\s*[+-]?\s*(?:\(\))?([\w.:-]+)\s*:\s*(.*)$"
     )
     for line_number, raw in lines[header_position + 1 :]:
         text = raw.strip()
@@ -673,7 +815,7 @@ def _state_endpoint(
     role: str,
     parent: str | None,
 ) -> str | None:
-    value = token.strip()
+    value = _strip_class_suffix(token.strip())
     if value == "[*]":
         prefix = "start" if role == "source" else "end"
         count = sum(node.id.startswith("__" + prefix) for node in diagram.nodes)
@@ -725,16 +867,19 @@ def _parse_state(
                 stereotype.group(1), stereotype.group(1), stereotype.group(2).casefold(), parent
             )
             continue
-        transition = re.match(r"^(.+?)\s+-->\s+(.+?)(?:\s*:\s*(.*))?$", text)
-        if transition:
-            source = _state_endpoint(diagram, transition.group(1), "source", parent)
-            target = _state_endpoint(diagram, transition.group(2), "target", parent)
+        if "-->" in text:
+            source_text, target_text = text.split("-->", 1)
+            label = ""
+            label_separator = re.search(r"(?<!:):(?!:)", target_text)
+            if label_separator:
+                label = target_text[label_separator.end() :]
+                target_text = target_text[: label_separator.start()]
+            source = _state_endpoint(diagram, source_text, "source", parent)
+            target = _state_endpoint(diagram, target_text, "target", parent)
             if source is None or target is None:
                 _fail(f"malformed edge at line {line_number}")
-            diagram.add_edge(source, target, clean_label(transition.group(3) or ""))
+            diagram.add_edge(source, target, clean_label(label))
             continue
-        if "-->" in text:
-            _fail(f"malformed edge at line {line_number}")
         description = re.match(r"^([A-Za-z_][\w.-]*)\s*:\s*(.+)$", text)
         if description:
             diagram.add_node(

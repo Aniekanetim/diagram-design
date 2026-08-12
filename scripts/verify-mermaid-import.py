@@ -139,6 +139,7 @@ def check_shape_and_edge_vocabulary(tmp: Path) -> None:
         '("round")': "round",
         '(["stadium"])': "stadium",
         '(("circle"))': "circle",
+        '((("double circle")))': "circle",
         '{"decision"}': "rhombus",
         '{{"hex"}}': "hexagon",
         '[("store")]': "cylinder",
@@ -203,6 +204,50 @@ D:::danger --- E
         fail("labeled dotted link did not retain its label and dashed style")
     if thick["label"] != "critical" or thick["style"] != "thick":
         fail("labeled thick link did not retain its label and thick style")
+
+    modern_file = tmp / "modern-flowchart.mmd"
+    modern_file.write_text(
+        '''flowchart LR
+request@{ shape: rounded, label: "Request" } o--o store@{ shape: cyl, label: "Store" }
+store x--x decision@{ shape: diam, label: "Continue?" }
+decision -->|retry --> queue| queue@{ shape: rect, label: "`Line one
+Line two`" }
+''',
+        encoding="utf-8",
+    )
+    modern = json.loads(run_extract([str(modern_file), "--json"]))["diagrams"][0]
+    modern_nodes = {node["id"]: node for node in modern["nodes"]}
+    if {
+        node_id: modern_nodes[node_id]["shape"]
+        for node_id in ("request", "store", "decision", "queue")
+    } != {
+        "request": "round",
+        "store": "cylinder",
+        "decision": "rhombus",
+        "queue": "rect",
+    }:
+        fail("expanded node shapes were not normalized")
+    if modern_nodes["queue"]["label"] != "Line one\nLine two":
+        fail("multiline Markdown label was not retained")
+    circle, cross, pipe_label = modern["edges"]
+    if not circle["bidirectional"] or circle["arrowhead"] != "circle":
+        fail("bidirectional circle link was not retained")
+    if not cross["bidirectional"] or cross["arrowhead"] != "cross":
+        fail("bidirectional cross link was not retained")
+    if pipe_label["label"] != "retry --> queue":
+        fail("arrow text inside an unquoted pipe label was split as syntax")
+
+    remote_file = tmp / "expanded-image.mmd"
+    remote_file.write_text(
+        'flowchart TD\nremote@{ img: "https://example.invalid/tracker.svg", '
+        'label: "Remote image" } --> safe\n',
+        encoding="utf-8",
+    )
+    remote_payload = json.loads(run_extract([str(remote_file), "--json"]))
+    if remote_payload["diagrams"][0]["nodes"][0]["shape"] != "image":
+        fail("expanded image node was not normalized")
+    if "example.invalid" in json.dumps(remote_payload):
+        fail("expanded image URL crossed the trust boundary into output")
     ok("documented shape families and edge forms normalize")
 
 
@@ -285,6 +330,24 @@ end
     if fragment_entries[0]["regions"] != ["continue"]:
         fail("nested fragment end popped the wrong sequence fragment")
 
+    modern_sequence = tmp / "modern-sequence.mmd"
+    modern_sequence.write_text(
+        """sequenceDiagram
+Alice->>+John: Hello
+John-->>-Alice: Fine
+Alice->>()Hub: central target
+Hub()->>Alice: central source
+""",
+        encoding="utf-8",
+    )
+    modern_sequence_payload = json.loads(
+        run_extract([str(modern_sequence), "--json"])
+    )["diagrams"][0]
+    if len(modern_sequence_payload["nodes"]) != 3:
+        fail("sequence activation or central connection markers leaked into node IDs")
+    if len(modern_sequence_payload["edges"]) != 4:
+        fail("sequence activation or central connection messages were not retained")
+
     state = tmp / "states.mmd"
     state.write_text(
         """stateDiagram-v2
@@ -298,6 +361,7 @@ Running --> [*]: stop
 state fork_join <<fork>>
 s1 : Waiting for work
 s1 --> Idle: ready
+Idle:::quiet --> Running:::active: styled transition
 """,
         encoding="utf-8",
     )
@@ -313,6 +377,11 @@ s1 --> Idle: ready
     state_nodes = {node["id"]: node for node in state_payload["nodes"]}
     if state_nodes["s1"]["label"] != "Waiting for work":
         fail("colon-form state description was not retained")
+    styled = state_payload["edges"][-1]
+    if styled["source"] != "Idle" or styled["target"] != "Running":
+        fail("state class suffix leaked into an endpoint ID")
+    if styled["label"] != "styled transition":
+        fail("state class suffix leaked into the transition label")
 
     er = tmp / "model.mermaid"
     er.write_text(
