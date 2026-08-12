@@ -81,7 +81,7 @@ All 27 diagrams ship in three variants: minimal light, minimal dark, and full-ed
 </tr>
 </table>
 
-**Browse the live gallery:** open [`skills/diagram-design/assets/index.html`](skills/diagram-design/assets/index.html) in your browser to flip through all 27 diagrams with light / dark / full-editorial tabs.
+**Browse the live gallery:** [cathrynlavery.github.io/diagram-design](https://cathrynlavery.github.io/diagram-design/) — or open [`skills/diagram-design/assets/index.html`](skills/diagram-design/assets/index.html) locally to flip through all 27 diagrams with light / dark / full-editorial tabs.
 
 ---
 
