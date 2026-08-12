@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Lint & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run skin linter
+        run: python scripts/lint-skin.py --all --baseline
+
+      - name: Verify sequence OAuth specs
+        run: python scripts/verify-sequence-oauth.py
+
+      - name: Verify icon build script
+        run: python scripts/build-icons.py
