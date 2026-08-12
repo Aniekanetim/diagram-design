@@ -48,6 +48,8 @@ def run_extract(args: list[str]) -> str:
         [sys.executable, str(EXTRACT), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if proc.returncode != 0:
         fail(f"extractor exited {proc.returncode} for {args}: {proc.stderr.strip()}")
