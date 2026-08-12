@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LINTER = ROOT / "scripts/lint-skin.py"
+BUILD_ICONS = ROOT / "scripts/build-icons.py"
 
 VALID_SVG = """\
 <svg xmlns="http://www.w3.org/2000/svg" role="img"
@@ -138,6 +140,32 @@ def main() -> int:
             '<path d="M0 0h1v1z"/></svg>\n',
             directory,
         )
+
+        spec = importlib.util.spec_from_file_location("build_icons", BUILD_ICONS)
+        if spec is None or spec.loader is None:
+            raise AssertionError("generated-icons: could not load build-icons.py")
+        build_icons = importlib.util.module_from_spec(spec)
+        previous_bytecode_setting = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec.loader.exec_module(build_icons)
+        finally:
+            sys.dont_write_bytecode = previous_bytecode_setting
+        generated_icons = {
+            "tabler": build_icons.normalize_tabler("<svg><path/></svg>"),
+            "simple": build_icons.normalize_simple("<svg><path/></svg>"),
+            "url": build_icons.normalize_url(
+                '<svg viewBox="0 0 24 24"><path/></svg>'
+            ),
+            "devicon": build_icons.normalize_devicon("<svg><path/></svg>"),
+            "logz": build_icons.normalize_logz("<svg><path/></svg>"),
+        }
+        for source, icon in generated_icons.items():
+            require_pass(
+                f"generated-{source}-icon",
+                VALID_SVG.replace("</svg>", f"  {icon}\n</svg>"),
+                directory,
+            )
 
         project = directory / "baseline-project"
         (project / "scripts").mkdir(parents=True)

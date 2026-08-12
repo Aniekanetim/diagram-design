@@ -218,7 +218,7 @@ def normalize_tabler(raw: str) -> str:
     body = re.sub(r'<path\s+stroke="none"[^/]*?/>', "", body)
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
+        '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" '
         'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" '
         f'stroke-linejoin="round">{body}</svg>'
     )
@@ -232,7 +232,7 @@ def normalize_simple(raw: str) -> str:
     body = inner.group(1).strip()
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        '<svg width="24" height="24" viewBox="0 0 24 24" '
+        '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" '
         f'fill="currentColor">{body}</svg>'
     )
 
@@ -284,7 +284,7 @@ def normalize_url(raw: str) -> str:
     body = re.sub(r'\bfill="none"', '', body)
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        f'<svg width="24" height="24" viewBox="{viewbox}" '
+        f'<svg aria-hidden="true" width="24" height="24" viewBox="{viewbox}" '
         f'fill="currentColor">{body}</svg>'
     )
 
@@ -303,7 +303,7 @@ def normalize_devicon(raw: str) -> str:
     body = re.sub(r'\bclass="[^"]*"', 'fill="currentColor"', body)
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        '<svg width="24" height="24" viewBox="0 0 128 128" '
+        '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 128 128" '
         f'fill="currentColor">{body}</svg>'
     )
 
@@ -320,7 +320,7 @@ def normalize_logz(raw: str) -> str:
     body = re.sub(r'\bfill="#[0-9a-fA-F]{3,8}"', 'fill="currentColor"', body)
     body = re.sub(r"\s+", " ", body).strip()
     return (
-        '<svg width="24" height="24" viewBox="0 0 100 100" '
+        '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 100 100" '
         f'fill="currentColor">{body}</svg>'
     )
 
