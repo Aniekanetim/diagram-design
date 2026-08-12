@@ -246,7 +246,7 @@ def normalize_url(raw: str) -> str:
     - White / near-white fills (#fff, #ffffff, white) are kept as-is — they
       act as contrast cutouts in 2-colour logos (e.g. white letter on coloured
       circle).  Every other colour becomes currentColor.
-    - inline style="fill:#..." is rewritten to a fill= attribute.
+    - inline fill/stroke colours are normalized without discarding other styles.
     - Inkscape layer translate() transforms are stripped (canvas offset artefact).
     """
     vb_match = re.search(
@@ -267,28 +267,36 @@ def normalize_url(raw: str) -> str:
         """Keep white; turn everything else into currentColor."""
         hex_val = value.lower().strip()
         if hex_val in ("#fff", "#ffffff", "white", "#fefefe", "#fdfdfd"):
-            return 'fill="#fff"'
-        return 'fill="currentColor"'
+            return "#fff"
+        return "currentColor"
 
-    # Rewrite inline style="fill:#rrggbb" → standalone fill= attribute.
+    def _normalize_inline_style(match: re.Match) -> str:
+        quote, declarations = match.group(1), match.group(2)
+        declarations = re.sub(
+            r'(\bfill\s*:\s*)(#[0-9a-fA-F]{3,8}|white)\b',
+            lambda fill: f"{fill.group(1)}{_normalized_fill(fill.group(2))}",
+            declarations,
+            flags=re.IGNORECASE,
+        )
+        declarations = re.sub(
+            r'(\bstroke\s*:\s*)#[0-9a-fA-F]{3,8}\b',
+            lambda stroke: f"{stroke.group(1)}currentColor",
+            declarations,
+            flags=re.IGNORECASE,
+        )
+        return f"style={quote}{declarations}{quote}"
+
+    # Normalize supported inline colours while preserving unrelated declarations.
     body = re.sub(
         r'style\s*=\s*(["\'])(.*?)\1',
-        lambda m: (
-            _normalized_fill(fill.group(1))
-            if (fill := re.search(
-                r'\bfill\s*:\s*(#[0-9a-fA-F]{3,8}|white)\b',
-                m.group(2),
-                flags=re.IGNORECASE,
-            ))
-            else m.group(0)
-        ),
+        _normalize_inline_style,
         body,
         flags=re.IGNORECASE,
     )
     # Rewrite standalone fill="#rrggbb" attributes.
     body = re.sub(
         r'\bfill\s*=\s*(["\'])(#[0-9a-fA-F]{3,8}|white)\1',
-        lambda m: _normalized_fill(m.group(2)),
+        lambda m: f'fill="{_normalized_fill(m.group(2))}"',
         body,
         flags=re.IGNORECASE,
     )

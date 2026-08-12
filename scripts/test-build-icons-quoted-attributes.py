@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def main() -> int:
     build_icons = load_build_module()
     svg = (
         "<svg viewBox='0 0 32 16'>"
-        "<path style='fill:#123456;stroke:#654321' d='M0 0h32v16H0z'/>"
+        "<path style='fill:#123456;stroke:#654321;opacity:.5' d='M0 0h32v16H0z'/>"
         "<circle fill='#abcdef' stroke='#111111' cx='8' cy='8' r='4'/>"
         "</svg>"
     )
@@ -35,10 +36,20 @@ def main() -> int:
         raise AssertionError(f"single-quoted viewBox was not preserved: {normalized}")
     if any(color in normalized for color in ("#123456", "#654321", "#abcdef", "#111111")):
         raise AssertionError(f"source colors escaped normalization: {normalized}")
-    if normalized.count('fill="currentColor"') < 2:
-        raise AssertionError(f"single-quoted fills were not normalized: {normalized}")
-    if 'stroke="currentColor"' not in normalized:
-        raise AssertionError(f"single-quoted strokes were not normalized: {normalized}")
+    path = re.search(r"<path\b([^>]*)>", normalized)
+    if path is None:
+        raise AssertionError(f"normalized path is missing: {normalized}")
+    path_attributes = path.group(1)
+    for declaration in ("fill:currentColor", "stroke:currentColor", "opacity:.5"):
+        if declaration not in path_attributes:
+            raise AssertionError(
+                f"path lost or failed to normalize {declaration}: {normalized}"
+            )
+    if (
+        'fill="currentColor"' not in normalized
+        or 'stroke="currentColor"' not in normalized
+    ):
+        raise AssertionError(f"standalone quoted colours were not normalized: {normalized}")
     print("PASS: URL SVG normalization handles single-quoted attributes")
     return 0
 
