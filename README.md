@@ -8,7 +8,7 @@
 
 *New in 2.0 — the Loop: flywheels with a shared-memory hub. The dashed lines are the write-backs.*
 
-27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram. Already have diagrams in draw.io? Point it at the file and it redraws them at the format, size, and level of detail your audience needs.
+27 types. One agent skill for Claude Code, Codex, and Pi. Your brand in 60 seconds — the skill reads your website and maps colors + fonts to every diagram. Already have diagrams in draw.io or Mermaid? Point it at the source and it redraws them at the format, size, and level of detail your audience needs.
 
 No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
@@ -208,9 +208,9 @@ cp skills/diagram-design/assets/template-full.html my-diagram.html   # editorial
 
 ---
 
-## Import from draw.io
+## Import from draw.io or Mermaid
 
-Already have diagrams in draw.io / diagrams.net? Point the skill at the file and it **redraws** them — same content, this design system, at whatever the destination needs.
+Already have diagrams in draw.io / diagrams.net or Mermaid? Point the skill at the source and it **redraws** them — same content, this design system, at whatever the destination needs.
 
 ![Redrawn from a .drawio file](docs/screenshots/import-drawio.png)
 
@@ -220,11 +220,14 @@ Already have diagrams in draw.io / diagrams.net? Point the skill at the file and
 /diagram-design:import platform.drawio
 /diagram-design:import platform.drawio --size=slide-16x9 --detail=simplified --audience=executive
 /diagram-design:import platform.drawio --detail=faithful --format=png --page=all
+/diagram-design:import-mermaid README.md --diagram=all
+/diagram-design:import-mermaid architecture.mmd --size=slide-16x9 --detail=simplified
 ```
 
-Or just ask: *"redraw this drawio file for my deck"* / *"この drawio をスライド用にきれいにして"*.
+Or just ask: *"redraw this drawio file for my deck"*, *"make this Mermaid block editorial"*, or *"この Mermaid をスライド用にきれいにして"*.
 
 Reads the common containers draw.io writes — `.drawio`, `.drawio.xml`, `.drawio.png` (embedded diagram), and `.drawio.svg` — including compressed payloads that look like base64 garbage in an editor.
+For Mermaid, it accepts `.mmd`, `.mermaid`, and one or more fenced `mermaid` blocks in Markdown. It parses text only: no rendering, JavaScript, browser, network, or followed click targets.
 
 ### The four dials
 
@@ -246,7 +249,7 @@ Dropped:   1 sticky note ("legacy path, to be retired") — unconnected in sourc
 Kept in full: the request path (Web/Mobile → Gateway → Orders → Postgres)
 ```
 
-What never carries over: source coordinates, source palette, source fonts, draw.io's diagonal connector spaghetti. What always does: components, relationships, grouping, and direction. See [`references/import-drawio.md`](skills/diagram-design/references/import-drawio.md) and [`references/output-spec.md`](skills/diagram-design/references/output-spec.md).
+What never carries over: source or renderer coordinates, source palette, source fonts, draw.io's diagonal connector spaghetti, or Mermaid's automatic layout. What always does: components, relationships, grouping, and direction. See [`references/import-drawio.md`](skills/diagram-design/references/import-drawio.md), [`references/import-mermaid.md`](skills/diagram-design/references/import-mermaid.md), and [`references/output-spec.md`](skills/diagram-design/references/output-spec.md).
 
 ---
 
@@ -292,9 +295,11 @@ Progressive disclosure. `SKILL.md` is a lean index — it tells the agent how to
 diagram-design/
 ├── commands/
 │   ├── export-diagram.md            — Claude Code export command
-│   └── import-drawio.md             — Claude Code draw.io import command
+│   ├── import-drawio.md             — Claude Code draw.io import command
+│   └── import-mermaid.md            — Claude Code Mermaid import command
 ├── prompts/
-│   └── export-diagram.md            — Pi `/export-diagram` prompt template
+│   ├── export-diagram.md            — Pi `/export-diagram` prompt template
+│   └── import-mermaid.md            — Pi Mermaid import prompt template
 ├── skills/
 │   └── diagram-design/
 │       ├── SKILL.md                 — philosophy, selection guide, checklist
@@ -302,6 +307,7 @@ diagram-design/
 │       │   ├── style-guide.md       — single source of truth for colors + fonts
 │       │   ├── onboarding.md        — the URL-to-tokens flow
 │       │   ├── import-drawio.md     — draw.io redraw procedure
+│       │   ├── import-mermaid.md    — Mermaid redraw procedure
 │       │   ├── output-spec.md       — format × size × detail level
 │       │   ├── export.md            — SVG / PNG export + sizing
 │       │   ├── type-architecture.md
@@ -322,7 +328,8 @@ diagram-design/
 │       │   ├── primitive-sketchy.md
 │       │   └── primitive-terminal.md
 │       ├── scripts/
-│       │   └── drawio_extract.py    — draw.io → structured IR
+│       │   ├── drawio_extract.py    — draw.io → structured IR
+│       │   └── mermaid_extract.py   — Mermaid → structured IR
 │       └── assets/
 │           ├── index.html           — live gallery, tabbed
 │           ├── template*.html       — scaffolds for new diagrams
@@ -330,11 +337,16 @@ diagram-design/
 │           ├── example-loop-terminal.html
 │           ├── example-quadrant-consultant.html
 │           ├── example-import-drawio.html
+│           ├── example-import-mermaid.html
 │           └── example-sequence-oauth*.html
+├── scripts/fixtures/
+│   ├── sample-flowchart.mmd
+│   ├── sample-readme-with-mermaid.md
+│   └── sample-adversarial.mmd
 └── docs/screenshots/                — images used in this README
 ```
 
-This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 36 reference files covering every diagram type, primitive, and utility.
+This keeps the agent's working context tight (only load what you need) and makes the skill easy to extend — drop a new `type-<name>.md` and wire it into the selection guide. The skill ships with 37 reference files covering every diagram type, primitive, and utility.
 
 ### Contributing / skin lint
 
@@ -345,12 +357,15 @@ an empty or misplaced title/description, or unsafe bare `title` / `desc` IDs.
 If you touch the draw.io import path, `python3 scripts/verify-drawio-import.py` must also pass —
 it drives the real extractor against `scripts/fixtures/sample-architecture.drawio` in all four
 container formats and checks the references stay in sync.
+If you touch the Mermaid import path, `python3 scripts/verify-mermaid-import.py` must also pass —
+it covers all supported grammars, multi-block Markdown, adversarial labels, trust-boundary
+behavior, resource caps, named failures, and reference/command wiring.
 
 All pull requests and pushes are automatically validated via GitHub Actions CI (`.github/workflows/ci.yml`).
 
 ### What loads when
 
-At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 36 reference files.
+At startup, the agent sees only the skill name and description. When a request matches, it loads `SKILL.md`; type references are pulled in only when relevant. This keeps the skill fast even with 37 reference files.
 
 | You ask for… | Agent loads |
 |---|---|
@@ -361,6 +376,7 @@ At startup, the agent sees only the skill name and description. When a request m
 | "Give me a hand-drawn version" | `SKILL.md` + `references/primitive-sketchy.md` |
 | "Give me a terminal / CLI-window version" | `SKILL.md` + `references/primitive-terminal.md` |
 | "Redraw this .drawio file for my deck" | `SKILL.md` + `references/import-drawio.md` + `references/output-spec.md` + the chosen type's reference |
+| "Redraw this Mermaid block for my deck" | `SKILL.md` + `references/import-mermaid.md` + `references/output-spec.md` + the chosen type's reference |
 | Routine diagram-making (any of the 27 diagrams) | Only `SKILL.md` + that one type's reference |
 
 No matter how many types exist, the agent only reads the one you need. Add a new type tomorrow and nothing else changes.

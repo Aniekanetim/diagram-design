@@ -38,6 +38,9 @@ jobs:
       - name: Verify draw.io import script
         run: python3 scripts/verify-drawio-import.py
 
+      - name: Verify Mermaid import script
+        run: python3 scripts/verify-mermaid-import.py
+
       - name: Verify generated icon assets
         run: |
           python3 scripts/build-icons.py
