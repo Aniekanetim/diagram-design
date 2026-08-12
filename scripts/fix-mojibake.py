@@ -17,8 +17,10 @@ PAIRS = [
     ('â€¦', '…'),  # horizontal ellipsis
     ('â€¢', '•'),  # bullet
     ('â†’', '→'),  # right arrow
-    ('â†‘', '←'),  # left arrow
-    ('â†‘', '↑'),  # up arrow (same prefix collision - rare)
+    # CP1252 leaves byte 0x90 undefined, so spell the left-arrow corruption
+    # with a Unicode escape instead of embedding an invisible control character.
+    ('\u00e2\u2020\u0090', '←'),  # left arrow
+    ('â†‘', '↑'),  # up arrow
     ('â†“', '↓'),  # down arrow
     ('â‰¤', '≤'),  # less-than-or-equal
     ('â‰¥', '≥'),  # greater-than-or-equal
