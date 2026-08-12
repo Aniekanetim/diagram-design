@@ -249,8 +249,10 @@ def normalize_url(raw: str) -> str:
     - inline style="fill:#..." is rewritten to a fill= attribute.
     - Inkscape layer translate() transforms are stripped (canvas offset artefact).
     """
-    vb_match = re.search(r'viewBox="([^"]+)"', raw, re.IGNORECASE)
-    viewbox = vb_match.group(1) if vb_match else "0 0 128 128"
+    vb_match = re.search(
+        r'\bviewBox\s*=\s*(["\'])(.*?)\1', raw, flags=re.IGNORECASE
+    )
+    viewbox = vb_match.group(2).strip() if vb_match else "0 0 128 128"
     inner = re.search(r"<svg\b[^>]*>(.*?)</svg>", raw, flags=re.DOTALL | re.IGNORECASE)
     if not inner:
         raise ValueError("no <svg> in payload")
@@ -261,27 +263,47 @@ def normalize_url(raw: str) -> str:
     # Strip Inkscape canvas-offset translate transforms from group wrappers
     body = re.sub(r'\btransform="translate\([^"]+\)"', '', body)
 
-    def _rewrite_fill(m: re.Match) -> str:
+    def _normalized_fill(value: str) -> str:
         """Keep white; turn everything else into currentColor."""
-        hex_val = m.group(1).lower().strip()
+        hex_val = value.lower().strip()
         if hex_val in ("#fff", "#ffffff", "white", "#fefefe", "#fdfdfd"):
             return 'fill="#fff"'
         return 'fill="currentColor"'
 
-    # Rewrite inline style="fill:#rrggbb" → standalone fill= attribute
+    # Rewrite inline style="fill:#rrggbb" → standalone fill= attribute.
     body = re.sub(
-        r'style="[^"]*fill:\s*(#[0-9a-fA-F]{3,8}|white)[^"]*"',
-        lambda m: _rewrite_fill(re.search(r'(#[0-9a-fA-F]{3,8}|white)', m.group(0))),
+        r'style\s*=\s*(["\'])(.*?)\1',
+        lambda m: (
+            _normalized_fill(fill.group(1))
+            if (fill := re.search(
+                r'\bfill\s*:\s*(#[0-9a-fA-F]{3,8}|white)\b',
+                m.group(2),
+                flags=re.IGNORECASE,
+            ))
+            else m.group(0)
+        ),
         body,
+        flags=re.IGNORECASE,
     )
-    # Rewrite standalone fill="#rrggbb" attributes
+    # Rewrite standalone fill="#rrggbb" attributes.
     body = re.sub(
-        r'\bfill="(#[0-9a-fA-F]{3,8}|white)"',
-        _rewrite_fill,
+        r'\bfill\s*=\s*(["\'])(#[0-9a-fA-F]{3,8}|white)\1',
+        lambda m: _normalized_fill(m.group(2)),
         body,
+        flags=re.IGNORECASE,
     )
-    body = re.sub(r'\bstroke="#[0-9a-fA-F]{3,8}"', 'stroke="currentColor"', body)
-    body = re.sub(r'\bfill="none"', '', body)
+    body = re.sub(
+        r'\bstroke\s*=\s*(["\'])#[0-9a-fA-F]{3,8}\1',
+        'stroke="currentColor"',
+        body,
+        flags=re.IGNORECASE,
+    )
+    body = re.sub(
+        r'\bfill\s*=\s*(["\'])none\1',
+        '',
+        body,
+        flags=re.IGNORECASE,
+    )
     body = re.sub(r"\s+", " ", body).strip()
     return (
         f'<svg aria-hidden="true" width="24" height="24" viewBox="{viewbox}" '
