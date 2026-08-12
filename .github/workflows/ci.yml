@@ -26,5 +26,9 @@ jobs:
       - name: Verify sequence OAuth specs
         run: python scripts/verify-sequence-oauth.py
 
+      - name: Verify draw.io import script
+        run: python scripts/verify-drawio-import.py
+
       - name: Verify icon build script
         run: python scripts/build-icons.py
+
