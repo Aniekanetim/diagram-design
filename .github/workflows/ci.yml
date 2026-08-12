@@ -63,3 +63,12 @@ jobs:
           git diff --ignore-space-at-eol --exit-code -- \
             skills/diagram-design/assets/icons.html \
             skills/diagram-design/references/primitive-icons.md
+
+      - name: Upload linter failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linter-failure-artifacts-${{ matrix.os }}-python-${{ matrix.python-version }}
+          path: |
+            scripts/fixtures/
+            skills/diagram-design/assets/
