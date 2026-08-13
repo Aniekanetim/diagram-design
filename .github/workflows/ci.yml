@@ -14,6 +14,43 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
+  plugin-package:
+    name: Plugin Package & Version Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: "core.autocrlf"
+          GIT_CONFIG_VALUE_0: "false"
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test plugin package tooling
+        run: python3 scripts/test-plugin-package.py
+
+      - name: Require a synchronized plugin version bump
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/verify-plugin-package.py "$BASE_REF"
+
+      - name: Validate Claude marketplace package without warnings
+        run: npx --yes @anthropic-ai/claude-code@2.1.229 plugin validate . --strict
+
   validate:
     name: Lint & Verify (${{ matrix.os }}, Python ${{ matrix.python-version }})
     strategy:

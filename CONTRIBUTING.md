@@ -27,8 +27,21 @@ See [README.md](README.md) for the full picture, including the design system and
 
 Every validation gate below must pass before a PR is ready. They also run automatically as GitHub Actions CI (`.github/workflows/ci.yml`).
 
+Every PR changes the distributed plugin package, including documentation- and CI-only PRs. Increment both native manifests together before opening or updating a PR:
+
+```bash
+python3 scripts/bump-plugin-version.py          # patch (default)
+python3 scripts/bump-plugin-version.py --minor  # minor release
+python3 scripts/bump-plugin-version.py --major  # major release
+```
+
+The helper refuses to run if the Claude and Codex versions already differ. If another release lands on `main` first, rebase and bump again so your version remains greater than the new base.
+
 | What it checks | Command |
 |---|---|
+| Plugin bump helper and adversarial package cases | `python3 scripts/test-plugin-package.py` |
+| Synchronized, increasing versions; valid marketplace paths; packaged skill | `python3 scripts/verify-plugin-package.py origin/main` |
+| Claude marketplace and plugin schema, with warnings treated as errors | `claude plugin validate . --strict` |
 | Accessible SVG contract (unit tests for the a11y linter) | `python3 scripts/test-lint-a11y.py` |
 | Semantic-pattern routing | `python3 scripts/verify-semantic-motion.py --markdown-only` |
 | Animated-example structure and accessibility | `python3 scripts/verify-semantic-motion.py --example-only` |
@@ -48,7 +61,10 @@ The semantic-pattern gate also caps `skills/diagram-design/SKILL.md` at 40,000 b
 Run them all at once before pushing:
 
 ```bash
-python3 scripts/test-lint-a11y.py \
+python3 scripts/test-plugin-package.py \
+  && python3 scripts/verify-plugin-package.py origin/main \
+  && claude plugin validate . --strict \
+  && python3 scripts/test-lint-a11y.py \
   && python3 scripts/verify-semantic-motion.py --markdown-only \
   && python3 scripts/verify-semantic-motion.py --example-only \
   && python3 scripts/verify-motion.py --shipped \
@@ -63,6 +79,7 @@ python3 scripts/test-lint-a11y.py \
 
 ### If a gate fails
 
+- **`verify-plugin-package.py`:** run the bump helper if the versions did not increase. If packaging validation fails, keep both marketplaces pointed at the repository root and keep the shared skill at `skills/diagram-design/SKILL.md`.
 - **`lint-skin.py`:** the failure message names the file, line, and category (`color`, `font-family`, `a11y`, `external-asset`, `pure-black`, `script`). Colors must come from the palette in `skills/diagram-design/references/style-guide.md`; fonts from the allowed list; diagrams must satisfy the accessible SVG contract (see below). The linter also requires the SHA-pinned controller from `template-motion.html` verbatim and rejects remote resources, CSS `@import`, non-fragment CSS `url()`, event handlers, `srcdoc`, executable URLs, and extra scripts.
 - **`verify-*.py`:** the extractor's real behavior no longer matches its fixture or the documentation, or the reference/command/prompt wiring drifted. Fix the source of truth — do not widen a test to avoid a failure.
 - **Icon assets:** you changed `scripts/vendor/icons/` or `scripts/build-icons.py` and the generated files went stale. Rerun `python3 scripts/build-icons.py` and commit the regenerated files.
