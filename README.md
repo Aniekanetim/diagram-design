@@ -89,28 +89,35 @@ All 27 visual types ship in three static variants: minimal light, minimal dark, 
 
 ## Install
 
+**Claude Code:**
+
+```text
+/plugin marketplace add cathrynlavery/diagram-design
+/plugin install diagram-design@diagram-design
+```
+
+Then enable updates once: run `/plugin`, open **Marketplaces**, select **diagram-design**, and choose **Enable auto-update**. Claude Code disables auto-update by default for third-party marketplaces; after this toggle, it refreshes the marketplace and installed plugin in the background after startup. Run `/reload-plugins` when prompted, or let the next session load the update.
+
+**Codex:**
+
+```bash
+codex plugin marketplace add cathrynlavery/diagram-design
+codex plugin add diagram-design@diagram-design
+```
+
+Codex refreshes configured Git marketplaces at startup. To fetch immediately, run `codex plugin marketplace upgrade diagram-design` and start a new session.
+
+**Claude Cowork (organization marketplace):** Organization GitHub marketplaces currently require a private or internal repository, so first mirror this public repository into one owned by your organization. In **Organization settings → Plugins**, choose **Add plugin → GitHub**, connect that mirror, and enable **Sync automatically** from the marketplace menu. Automatic sync runs when a pull request containing a plugin version bump is merged to the mirror's default branch; direct pushes do not trigger the webhook. Install Diagram Design from the resulting organization marketplace.
+
 **Pi:**
 
 ```bash
 pi install https://github.com/cathrynlavery/diagram-design
 ```
 
-Run `/reload` in an open Pi session. Pi makes the skill available for matching diagram requests; use `/skill:diagram-design` to invoke it explicitly. Pi also loads the `/export-diagram` prompt template.
+Run `/reload` in an open Pi session. Pi makes the skill available for matching diagram requests; use `/skill:diagram-design` to invoke it explicitly. Pi also loads the `/export-diagram` prompt template. The unpinned Git install is intentional: Pi has no automatic package refresh, so run `pi update --extensions` to pull merged updates.
 
-**Claude Code:**
-
-```
-/plugin marketplace add cathrynlavery/diagram-design
-/plugin install diagram-design@diagram-design
-```
-
-**Claude Cowork:** Customize → Directory → Plugins → **+** → paste `cathrynlavery/diagram-design` → Sync, then install from the Personal list.
-
-**Codex:**
-
-```
-npx skills add https://github.com/cathrynlavery/diagram-design --skill diagram-design
-```
+> **One-time migration:** an existing standalone `npx skills add` copy will not start following the Codex marketplace automatically. Remove that standalone copy, then use the Codex marketplace commands above. Likewise, uninstall a personal Cowork copy and reinstall Diagram Design from your organization's marketplace. Future marketplace version bumps then flow through each client's native update path.
 
 ### Editable install
 
@@ -306,6 +313,9 @@ Progressive disclosure. `SKILL.md` routes behavior first when needed, then layou
 
 ```
 diagram-design/
+├── .agents/plugins/marketplace.json — Codex marketplace catalog
+├── .claude-plugin/                  — Claude marketplace + plugin manifest
+├── .codex-plugin/                   — Codex plugin manifest
 ├── commands/
 │   ├── export-diagram.md            — Claude Code export command
 │   ├── import-drawio.md             — Claude Code draw.io import command
@@ -356,10 +366,14 @@ diagram-design/
 │           ├── example-import-mermaid.html
 │           ├── example-policy-trace-animated.html
 │           └── example-sequence-oauth*.html
-├── scripts/fixtures/
-│   ├── sample-flowchart.mmd
-│   ├── sample-readme-with-mermaid.md
-│   └── sample-adversarial.mmd
+├── scripts/
+│   ├── bump-plugin-version.py       — synchronized Claude/Codex version bump
+│   ├── verify-plugin-package.py     — version + marketplace package gate
+│   ├── test-plugin-package.py       — adversarial package-gate tests
+│   └── fixtures/
+│       ├── sample-flowchart.mmd
+│       ├── sample-readme-with-mermaid.md
+│       └── sample-adversarial.mmd
 ├── docs/adr/                        — short records of settled design decisions
 └── docs/screenshots/                — images used in this README
 ```
