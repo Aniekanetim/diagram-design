@@ -344,7 +344,8 @@ diagram-design/
 │       │   └── primitive-terminal.md
 │       ├── scripts/
 │       │   ├── drawio_extract.py    — draw.io → structured IR
-│       │   └── mermaid_extract.py   — Mermaid → structured IR
+│       │   ├── mermaid_extract.py   — Mermaid → structured IR
+│       │   └── self_check.py        — packaged output self-check (runs installed)
 │       └── assets/
 │           ├── index.html           — live gallery, tabbed
 │           ├── template*.html       — scaffolds for new diagrams
@@ -359,6 +360,7 @@ diagram-design/
 │   ├── sample-flowchart.mmd
 │   ├── sample-readme-with-mermaid.md
 │   └── sample-adversarial.mmd
+├── docs/adr/                        — short records of settled design decisions
 └── docs/screenshots/                — images used in this README
 ```
 
@@ -377,6 +379,8 @@ container formats and checks the references stay in sync.
 If you touch the Mermaid import path, `python3 scripts/verify-mermaid-import.py` must also pass —
 it covers all supported grammars, multi-block Markdown, adversarial labels, trust-boundary
 behavior, resource caps, named failures, and reference/command wiring.
+
+Docs and routing surfaces are themselves gated: `python3 scripts/verify-docs-sync.py` fails CI if the SKILL.md description loses a type's lexical hook, the gallery can't reach a shipped example, or the README tree names a file that doesn't exist. The skill also ships `skills/diagram-design/scripts/self_check.py` — a distilled output checker installed agents can run on their own generated diagrams; `python3 scripts/test-self-check.py` keeps it honest. Settled design decisions (why one pinned controller, why patterns never add types, the autoplay policy, the SKILL.md byte cap) live as short ADRs in `docs/adr/` — read them before relitigating one, add one when you settle a new policy.
 
 All pull requests and pushes are automatically validated across Linux, Windows, and macOS runners via GitHub Actions CI (`.github/workflows/ci.yml`).
 
@@ -401,6 +405,17 @@ At startup, the agent sees only the skill name and description. When a request m
 No matter how many types exist, the agent only reads the one you need. Add a new type tomorrow and nothing else changes.
 
 ---
+
+## It's working if…
+
+- A routine request ("make me a flowchart") loads `SKILL.md` plus exactly one type reference — nothing else.
+- Before drawing, the agent states the chosen type, pattern, size, and planned cuts, then renders.
+- The output is one `.html` file that opens double-clicked, offline, with no network requests beyond Google Fonts.
+- Screen readers announce the diagram's title and description; `prefers-reduced-motion` shows the complete static frame.
+- `python3 skills/diagram-design/scripts/self_check.py <file>` prints `OK` on the generated file.
+- After brand onboarding, new diagrams use your site's paper, ink, accent, and fonts — with a fidelity receipt naming each.
+
+If any of these fail, that's a bug worth filing.
 
 ## The design system (in one paragraph)
 

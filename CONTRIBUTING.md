@@ -39,6 +39,8 @@ Every validation gate below must pass before a PR is ready. They also run automa
 | Mermaid import path (grammars, adversarial input, caps, docs sync) | `python3 scripts/verify-mermaid-import.py` |
 | Optional motion contract (fallbacks, controls, budgets, determinism) | `python3 scripts/test-verify-motion.py` |
 | Every shipped motion template/example | `python3 scripts/verify-motion.py --shipped` |
+| Docs/routing sync (description hooks, gallery reachability, README tree) | `python3 scripts/verify-docs-sync.py` |
+| Packaged output self-check behaves (pass + adversarial cases) | `python3 scripts/test-self-check.py` |
 | Generated icon assets are up to date (`icons.html`, `primitive-icons.md`) | `python3 scripts/build-icons.py` then `git diff --exit-code` on the two generated files |
 
 The semantic-pattern gate also caps `skills/diagram-design/SKILL.md` at 40,000 bytes so the installed skill remains practical to load. If that gate fails, reduce duplication or move detail into a routed reference; do not remove routing vocabulary from frontmatter.
@@ -54,7 +56,9 @@ python3 scripts/test-lint-a11y.py \
   && python3 scripts/verify-sequence-oauth.py \
   && python3 scripts/verify-drawio-import.py \
   && python3 scripts/verify-mermaid-import.py \
-  && python3 scripts/test-verify-motion.py
+  && python3 scripts/test-verify-motion.py \
+  && python3 scripts/verify-docs-sync.py \
+  && python3 scripts/test-self-check.py
 ```
 
 ### If a gate fails
@@ -98,11 +102,15 @@ New examples should be added to the gallery (`assets/index.html`) so they stay b
 
 Motion is opt-in. Start from `skills/diagram-design/assets/template-motion.html`, follow `references/animation.md`, and run `python3 scripts/verify-motion.py <file>` plus `python3 scripts/test-verify-motion.py`. A motion file must preserve complete no-JavaScript, reduced-motion, print, screenshot, and export states. Keep the controller byte-for-byte identical to the template; changes require updating the canonical template, example, documentation, and adversarial tests together.
 
+## Design decisions (ADRs)
+
+Settled policies live as short records in `docs/adr/` — one pinned motion controller, semantic patterns never expanding the 27-type taxonomy, the reveal-only autoplay rule, and the SKILL.md byte cap with its trigger-rich description requirement. Read the relevant ADR before proposing a change that touches one; when a PR settles a new policy, add an ADR in the same PR.
+
 ## Adding a new diagram type
 
 1. Write `skills/diagram-design/references/type-<name>.md` — layout conventions, anti-patterns, and a worked pattern for that type. Mirror an existing reference's structure.
-2. Add the row to the selection table in `skills/diagram-design/SKILL.md` §3.
-3. Add the three example variants (see above) and register them in the gallery.
+2. Add the row to the selection table in `skills/diagram-design/SKILL.md` §3 **and** the type's name to the frontmatter `description` — `verify-docs-sync.py` fails if the description loses or lacks a type's lexical hook.
+3. Add the three example variants (see above) and register them in the gallery (`assets/index.html`) — `verify-docs-sync.py` fails on any shipped example the gallery can't reach.
 4. Run the full gate suite — new examples are linted automatically by `--all`.
 
 ## Changing the icon set
