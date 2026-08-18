@@ -341,6 +341,16 @@ def check_security_and_limits(tmp: Path) -> None:
 
 def check_docs() -> None:
     import_text = IMPORT_REF.read_text(encoding="utf-8")
+    expected_slash_command = f"/diagram-design:{COMMAND.stem}"
+    documented_slash_commands = set(
+        re.findall(r"`(/diagram-design:[a-z0-9-]+)`", import_text)
+    )
+    if documented_slash_commands != {expected_slash_command}:
+        rendered = ", ".join(sorted(documented_slash_commands)) or "none"
+        fail(
+            "import-drawio.md slash command does not match "
+            f"{COMMAND.name}: expected {expected_slash_command}, found {rendered}"
+        )
     for needle in (
         "drawio_extract.py",
         "output-spec.md",

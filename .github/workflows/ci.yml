@@ -150,7 +150,9 @@ jobs:
       - name: Verify draw.io import script
         if: always()
         id: drawio
-        run: python scripts/verify-drawio-import.py
+        run: |
+          python scripts/verify-drawio-import.py
+          python scripts/test-verify-drawio-import.py
 
       - name: Verify Mermaid import script
         if: always()
