@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -90,8 +91,97 @@ def main() -> int:
         if errors != [expected]:
             raise AssertionError(f"stale Pi prompt was not reported: {errors}")
 
+        factory_manifest = root / ".factory-plugin/plugin.json"
+        factory_marketplace = root / ".factory-plugin/marketplace.json"
+        factory_manifest.parent.mkdir(parents=True)
+        factory_manifest.write_text(
+            json.dumps(
+                {
+                    "name": "diagram-design",
+                    "repository": "https://github.com/example/diagram-design",
+                }
+            ),
+            encoding="utf-8",
+        )
+        factory_marketplace.write_text(
+            json.dumps({"name": "diagram-design"}),
+            encoding="utf-8",
+        )
+        valid_readme = """# Diagram Design
+
+```bash
+droid plugin marketplace add https://github.com/example/diagram-design
+droid plugin install diagram-design@diagram-design --scope user
+```
+
+```
+diagram-design/
+├── .factory-plugin/ — Factory Droid metadata
+├── commands/
+└── skills/
+```
+"""
+        readme = root / "README.md"
+        readme.write_text(valid_readme, encoding="utf-8")
+
+        errors = []
+        verify.check_factory_install_surface(errors, root)
+        if errors:
+            raise AssertionError(f"valid Factory install contract failed: {errors}")
+
+        readme.write_text(
+            valid_readme.replace(
+                "droid plugin marketplace add https://github.com/example/diagram-design\n"
+                "droid plugin install diagram-design@diagram-design --scope user",
+                "droid plugin install diagram-design@diagram-design --scope user\n"
+                "droid plugin marketplace add https://github.com/example/diagram-design",
+            ),
+            encoding="utf-8",
+        )
+        errors = []
+        verify.check_factory_install_surface(errors, root)
+        expected = (
+            "README Factory install block must match native metadata: "
+            "`droid plugin marketplace add https://github.com/example/diagram-design` "
+            "then `droid plugin install diagram-design@diagram-design`"
+        )
+        if errors != [expected]:
+            raise AssertionError(
+                f"reversed Factory install commands were not reported: {errors}"
+            )
+
+        readme.write_text(
+            valid_readme.replace(
+                "diagram-design@diagram-design", "diagram-design@wrong-marketplace"
+            ),
+            encoding="utf-8",
+        )
+        errors = []
+        verify.check_factory_install_surface(errors, root)
+        expected = (
+            "README Factory install block must match native metadata: "
+            "`droid plugin marketplace add https://github.com/example/diagram-design` "
+            "then `droid plugin install diagram-design@diagram-design`"
+        )
+        if errors != [expected]:
+            raise AssertionError(
+                f"drifted Factory plugin ID was not reported: {errors}"
+            )
+
+        readme.write_text(
+            valid_readme.replace("├── .factory-plugin/ — Factory Droid metadata\n", ""),
+            encoding="utf-8",
+        )
+        errors = []
+        verify.check_factory_install_surface(errors, root)
+        expected = (
+            "README architecture tree must list Factory's native .factory-plugin/ path"
+        )
+        if errors != [expected]:
+            raise AssertionError(f"missing Factory native path was not reported: {errors}")
+
     print(
-        "PASS: docs sync checks reference links and Claude/Pi profile-surface parity"
+        "PASS: docs sync checks references, profile surfaces, and Factory install contract"
     )
     return 0
 

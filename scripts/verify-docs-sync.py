@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify that routing and browsing surfaces stay in sync with the skill.
 
-Five drift classes, each of which has shipped before:
+Seven drift classes, each of which has shipped before:
 
 1. The SKILL.md frontmatter description is the only text an agent sees before
    deciding to load the skill — every visual type in the selection table must
@@ -15,6 +15,8 @@ Five drift classes, each of which has shipped before:
    text a user reads *before installing*, so by ADR 0004's own argument they
    need every type's lexical hook too - and nothing else notices when they
    drift, because they are four separate copies of one sentence.
+7. Factory Droid's README install commands and native manifest path must agree
+   with the package metadata instead of becoming a second hand-maintained API.
 """
 
 from __future__ import annotations
@@ -40,6 +42,8 @@ PROFILE_SURFACES = (
     Path("commands/profile.md"),
     Path("prompts/profile.md"),
 )
+FACTORY_MANIFEST = Path(".factory-plugin/plugin.json")
+FACTORY_MARKETPLACE = Path(".factory-plugin/marketplace.json")
 
 
 def normalized(text: str) -> str:
@@ -156,10 +160,56 @@ def check_profile_surfaces(errors: list[str], root: Path) -> None:
             )
 
 
+def check_factory_install_surface(errors: list[str], root: Path) -> None:
+    markdown = (root / "README.md").read_text(encoding="utf-8")
+    manifest = json.loads((root / FACTORY_MANIFEST).read_text(encoding="utf-8"))
+    marketplace = json.loads((root / FACTORY_MARKETPLACE).read_text(encoding="utf-8"))
+    code_blocks = re.findall(
+        r"^```[^\n]*\n(.*?)^```[ \t]*$", markdown, re.MULTILINE | re.DOTALL
+    )
+
+    marketplace_command = f"droid plugin marketplace add {manifest['repository']}"
+    install_command = f"droid plugin install {manifest['name']}@{marketplace['name']}"
+    command_blocks = [
+        [line.strip() for line in block.splitlines() if line.strip()]
+        for block in code_blocks
+    ]
+    install_is_documented = any(
+        any(
+            line == install_command or line.startswith(f"{install_command} ")
+            for line in lines[lines.index(marketplace_command) + 1 :]
+        )
+        for lines in command_blocks
+        if marketplace_command in lines
+    )
+    if not install_is_documented:
+        errors.append(
+            "README Factory install block must match native metadata: "
+            f"`{marketplace_command}` then `{install_command}`"
+        )
+
+    native_directory = f"{FACTORY_MANIFEST.parent.as_posix()}/"
+    architecture_blocks = [
+        block
+        for block in code_blocks
+        if "diagram-design/" in block and "commands/" in block
+    ]
+    native_path_is_documented = any(
+        line.lstrip(" │├─└").startswith(native_directory)
+        for block in architecture_blocks
+        for line in block.splitlines()
+    )
+    if not native_path_is_documented:
+        errors.append(
+            f"README architecture tree must list Factory's native {native_directory} path"
+        )
+
+
 MANIFEST_DESCRIPTIONS = (
     (Path(".claude-plugin/plugin.json"), ("description",)),
     (Path(".claude-plugin/marketplace.json"), ("description",)),
     (Path(".codex-plugin/plugin.json"), ("description", "longDescription")),
+    (FACTORY_MANIFEST, ("description",)),
 )
 
 
@@ -212,6 +262,7 @@ def main() -> int:
     errors: list[str] = []
     check_description(errors)
     check_manifest_descriptions(errors, ROOT)
+    check_factory_install_surface(errors, ROOT)
     check_gallery(errors)
     check_readme_tree(errors)
     check_skill_reference_links(
@@ -227,7 +278,7 @@ def main() -> int:
         return 1
     print(
         "OK docs sync: description hooks, gallery reachability, README tree, "
-        "reference links, profile surfaces, manifest descriptions"
+        "reference links, profile surfaces, manifest descriptions, Factory install contract"
     )
     return 0
 

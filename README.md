@@ -14,7 +14,7 @@
 
 *New in 2.5.10: ten more layout grammars — Sankey, fishbone, Wardley map, kanban, user journey, deployment, dependency graph, UML class, story map, and database schema.*
 
-38 editorial diagram types for Claude Code, Codex, and Pi. Self-contained HTML + SVG. No shadows. No Mermaid slop. Semantic patterns describe behavior separately from layout, so a queue, policy trace, or trust boundary can use the nearest existing type without expanding the type count. Static HTML remains the default; optional motion is available for ordered explanations. The skill also redraws draw.io or Mermaid sources at a chosen format, size, and detail level.
+38 editorial diagram types for Claude Code, Codex, Factory Droid, and Pi. Self-contained HTML + SVG. No shadows. No Mermaid slop. Semantic patterns describe behavior separately from layout, so a queue, policy trace, or trust boundary can use the nearest existing type without expanding the type count. Static HTML remains the default; optional motion is available for ordered explanations. The skill also redraws draw.io or Mermaid sources at a chosen format, size, and detail level.
 
 No Figma. No generic rounded boxes. No 30-minute color-picking sessions.
 
@@ -128,6 +128,15 @@ codex plugin add diagram-design@diagram-design
 
 Codex refreshes configured Git marketplaces at startup. To fetch immediately, run `codex plugin marketplace upgrade diagram-design` and start a new session.
 
+**Factory Droid:**
+
+```bash
+droid plugin marketplace add https://github.com/cathrynlavery/diagram-design
+droid plugin install diagram-design@diagram-design --scope user
+```
+
+Droid tracks Git plugins by commit rather than the manifest's display version. To fetch a merged update, run `droid plugin marketplace update diagram-design`, then `droid plugin update diagram-design@diagram-design --scope user`, and start a new session.
+
 **Claude Cowork (organization marketplace):** Organization GitHub marketplaces currently require a private or internal repository, so first mirror this public repository into one owned by your organization. In **Organization settings → Plugins**, choose **Add plugin → GitHub**, connect that mirror, and enable **Sync automatically** from the marketplace menu. Automatic sync runs when a pull request containing a plugin version bump is merged to the mirror's default branch; direct pushes do not trigger the webhook. Install Diagram Design from the resulting organization marketplace.
 
 **Pi:**
@@ -154,7 +163,7 @@ pi install ~/code/diagram-design
 ln -s ~/code/diagram-design/skills/diagram-design ~/.claude/skills/diagram-design
 ```
 
-The shared skill lives at `skills/diagram-design/`. Pi discovers it through the repo's standard `skills/` package directory; Claude Code, Codex, and other Agent Skills-compatible tools use the same files.
+The shared skill lives at `skills/diagram-design/`. Pi discovers it through the repo's standard `skills/` package directory; Claude Code, Codex, Factory Droid, and other Agent Skills-compatible tools use the same files.
 
 ---
 
@@ -218,7 +227,7 @@ See [`skills/diagram-design/references/onboarding.md`](skills/diagram-design/ref
 
 Onboard a brand once, save the result as a named profile, then add a `.diagram-design` marker containing `profile: <slug>` to each client project. Marker projects read `~/.diagram-design/profiles/<slug>.md` directly, so parallel workspaces can use different brands without overwriting a shared installed `style-guide.md`.
 
-The profile library is shared across Claude Code, Codex, and Pi. Use `/diagram-design:profile` in Claude Code, `/profile` in Pi, or ask in natural language in any host. See [`profiles.md`](skills/diagram-design/references/profiles.md) for the storage, marker, and recovery contract.
+The profile library is shared across Claude Code, Codex, Factory Droid, and Pi. Use `/diagram-design:profile` in Claude Code, `/profile` in Factory Droid or Pi, or ask in natural language in any host. See [`profiles.md`](skills/diagram-design/references/profiles.md) for the storage, marker, and recovery contract.
 
 ---
 
@@ -229,7 +238,7 @@ The profile library is shared across Claude Code, Codex, and Pi. Use `/diagram-d
 open skills/diagram-design/assets/index.html       # macOS
 xdg-open skills/diagram-design/assets/index.html  # Linux
 
-# In Claude Code, Codex, or Pi, ask:
+# In Claude Code, Codex, Factory Droid, or Pi, ask:
 # "Make me an architecture diagram of my app: frontend, backend, database, Redis cache."
 # "I need a quadrant showing Q2 projects by impact vs effort."
 # "Give me a sequence of a bearer call with token refresh on 401."
@@ -343,11 +352,12 @@ diagram-design/
 ├── .agents/plugins/marketplace.json — Codex marketplace catalog
 ├── .claude-plugin/                  — Claude marketplace + plugin manifest
 ├── .codex-plugin/                   — Codex plugin manifest
+├── .factory-plugin/                 — Factory Droid marketplace + plugin manifest
 ├── commands/
-│   ├── export-diagram.md            — Claude Code export command
-│   ├── import-drawio.md             — Claude Code draw.io import command
-│   ├── import-mermaid.md            — Claude Code Mermaid import command
-│   └── profile.md                   — Claude Code client-profile command
+│   ├── export-diagram.md            — plugin export command
+│   ├── import-drawio.md             — plugin draw.io import command
+│   ├── import-mermaid.md            — plugin Mermaid import command
+│   └── profile.md                   — plugin client-profile command
 ├── prompts/
 │   ├── export-diagram.md            — Pi `/export-diagram` prompt template
 │   ├── import-mermaid.md            — Pi Mermaid import prompt template
@@ -407,7 +417,7 @@ diagram-design/
 │           ├── example-policy-trace-animated.html
 │           └── example-sequence-oauth*.html
 ├── scripts/
-│   ├── bump-plugin-version.py       — synchronized Claude/Codex version bump
+│   ├── bump-plugin-version.py       — synchronized Claude/Codex/Factory version bump
 │   ├── render-canonical-screenshots.py — deterministic 38-type PNG catalog renderer
 │   ├── verify-screenshot-freshness.py — source + screenshot digest gate
 │   ├── verify-plugin-package.py     — version + marketplace package gate

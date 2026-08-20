@@ -15,9 +15,21 @@ PLUGIN_NAME = "diagram-design"
 MANIFEST_PATHS = {
     "Claude": Path(".claude-plugin/plugin.json"),
     "Codex": Path(".codex-plugin/plugin.json"),
+    "Factory": Path(".factory-plugin/plugin.json"),
 }
 CLAUDE_MARKETPLACE = Path(".claude-plugin/marketplace.json")
 CODEX_MARKETPLACE = Path(".agents/plugins/marketplace.json")
+FACTORY_MARKETPLACE = Path(".factory-plugin/marketplace.json")
+SHARED_MANIFEST_FIELDS = (
+    "name",
+    "description",
+    "version",
+    "author",
+    "homepage",
+    "repository",
+    "license",
+    "keywords",
+)
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
@@ -36,7 +48,20 @@ def load_json(path: Path, errors: list[str]) -> dict[str, Any] | None:
     return payload
 
 
-def load_base_json(root: Path, base_ref: str, relative: Path, errors: list[str]) -> dict[str, Any] | None:
+def base_path_exists(root: Path, base_ref: str, relative: Path) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{base_ref}:{relative.as_posix()}"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def load_base_json(
+    root: Path, base_ref: str, relative: Path, errors: list[str]
+) -> dict[str, Any] | None:
     result = subprocess.run(
         ["git", "show", f"{base_ref}:{relative.as_posix()}"],
         cwd=root,
@@ -125,10 +150,26 @@ def verify_versions(
     version_values = list(current_versions.values())
     if any(version != version_values[0] for version in version_values[1:]):
         rendered = ", ".join(f"{label}={value!r}" for label, value in current_versions.items())
-        errors.append(f"Claude and Codex manifest versions must match: {rendered}")
+        errors.append(f"plugin manifest versions must match: {rendered}")
 
+    base_check = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{base_ref}^{{commit}}"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if base_check.returncode != 0:
+        detail = base_check.stderr.strip() or "not a commit"
+        errors.append(f"could not resolve base ref {base_ref!r}: {detail}")
+        return
+
+    base_manifest_count = 0
     for label, relative in MANIFEST_PATHS.items():
         current = parse_semver(current_versions.get(label), f"current {label}", errors)
+        if not base_path_exists(root, base_ref, relative):
+            continue
+        base_manifest_count += 1
         base_manifest = load_base_json(root, base_ref, relative, errors)
         if base_manifest is None:
             continue
@@ -138,6 +179,11 @@ def verify_versions(
                 f"{label} manifest version must increase relative to {base_ref}: "
                 f"{base_manifest.get('version')} -> {current_versions.get(label)}"
             )
+    if base_manifest_count == 0:
+        errors.append(
+            f"no synchronized plugin manifest exists at {base_ref}; "
+            "cannot establish that the package version advanced"
+        )
 
 
 def verify_manifest_identity(manifests: dict[str, dict[str, Any]], errors: list[str]) -> None:
@@ -146,20 +192,40 @@ def verify_manifest_identity(manifests: dict[str, dict[str, Any]], errors: list[
             errors.append(
                 f"{label} manifest name must remain {PLUGIN_NAME!r}; got {payload.get('name')!r}"
             )
+    reference_label = next(iter(MANIFEST_PATHS))
+    reference = manifests[reference_label]
+    for label, payload in manifests.items():
+        if label == reference_label:
+            continue
+        for field in SHARED_MANIFEST_FIELDS:
+            if payload.get(field) != reference.get(field):
+                errors.append(
+                    f"{label} manifest {field!r} must match {reference_label}; "
+                    f"got {payload.get(field)!r}"
+                )
 
 
 def verify_marketplaces(root: Path, errors: list[str]) -> None:
     claude_marketplace = load_json(root / CLAUDE_MARKETPLACE, errors)
     codex_marketplace = load_json(root / CODEX_MARKETPLACE, errors)
-    if claude_marketplace is None or codex_marketplace is None:
+    factory_marketplace = load_json(root / FACTORY_MARKETPLACE, errors)
+    if (
+        claude_marketplace is None
+        or codex_marketplace is None
+        or factory_marketplace is None
+    ):
         return
 
     claude_entry = find_plugin_entry(claude_marketplace, "Claude", errors)
     codex_entry = find_plugin_entry(codex_marketplace, "Codex", errors)
-    if claude_entry is None or codex_entry is None:
+    factory_entry = find_plugin_entry(factory_marketplace, "Factory", errors)
+    if claude_entry is None or codex_entry is None or factory_entry is None:
         return
 
     claude_root = resolve_local_path(root, claude_entry.get("source"), "Claude plugin source", errors)
+    factory_root = resolve_local_path(
+        root, factory_entry.get("source"), "Factory plugin source", errors
+    )
 
     codex_source = codex_entry.get("source")
     if not isinstance(codex_source, dict) or codex_source.get("source") != "local":
@@ -183,15 +249,26 @@ def verify_marketplaces(root: Path, errors: list[str]) -> None:
         errors.append("Claude marketplace target does not contain .claude-plugin/plugin.json")
     if codex_root is not None and not (codex_root / MANIFEST_PATHS["Codex"]).is_file():
         errors.append("Codex marketplace target does not contain .codex-plugin/plugin.json")
-    if claude_root is not None and codex_root is not None and claude_root != codex_root:
-        errors.append("Claude and Codex marketplaces must package the same plugin root")
+    if factory_root is not None and not (factory_root / MANIFEST_PATHS["Factory"]).is_file():
+        errors.append("Factory marketplace target does not contain .factory-plugin/plugin.json")
 
-    plugin_root = codex_root or claude_root
+    plugin_roots = [
+        plugin_root
+        for plugin_root in (claude_root, codex_root, factory_root)
+        if plugin_root is not None
+    ]
+    if plugin_roots and any(plugin_root != plugin_roots[0] for plugin_root in plugin_roots[1:]):
+        errors.append("Claude, Codex, and Factory marketplaces must package the same plugin root")
+
+    plugin_root = codex_root or claude_root or factory_root
     if plugin_root is None:
         return
     skill = plugin_root / "skills" / PLUGIN_NAME / "SKILL.md"
     if not skill.is_file():
         errors.append(f"packaged skill is missing: {skill.relative_to(root)}")
+    commands = plugin_root / "commands"
+    if not commands.is_dir() or not any(commands.glob("*.md")):
+        errors.append("packaged commands are missing from the shared plugin root")
 
 
 def verify_codex_skill_path(root: Path, codex_manifest: dict[str, Any], errors: list[str]) -> None:
@@ -232,7 +309,7 @@ def main() -> int:
         return 1
     versions = load_json(ROOT / MANIFEST_PATHS["Claude"], [])["version"]
     print(
-        f"OK plugin package: Claude and Codex {versions}, "
+        f"OK plugin package: Claude, Codex, and Factory {versions}, "
         f"marketplace paths, and packaged skill"
     )
     return 0
