@@ -162,6 +162,19 @@
         background: var(--paper);
         display: block;
       }
+
+      @media (max-width: 640px) {
+        #type-tabs {
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          overscroll-behavior-inline: contain;
+          padding-bottom: 0.25rem;
+          scrollbar-width: thin;
+        }
+        #type-tabs .tab {
+          flex: 0 0 auto;
+        }
+      }
     </style>
   </head>
   <body>
