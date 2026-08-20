@@ -280,13 +280,43 @@ def verify_codex_skill_path(root: Path, codex_manifest: dict[str, Any], errors: 
         errors.append(f"Codex skills path does not contain {PLUGIN_NAME}/SKILL.md")
 
 
+def valid_double_quoted_yaml_scalar(value: str) -> bool:
+    """Validate escapes in the single-line double-quoted YAML subset we accept."""
+    match = re.fullmatch(r'"(?P<body>(?:[^"\\]|\\.)*)"(?:\s+#.*)?', value)
+    if match is None:
+        return False
+    body = match.group("body")
+    simple_escapes = set('0abtnvfre "\\/N_LP')
+    index = 0
+    while index < len(body):
+        if body[index] != "\\":
+            index += 1
+            continue
+        index += 1
+        escape = body[index]
+        if escape in simple_escapes:
+            index += 1
+            continue
+        digits = {"x": 2, "u": 4, "U": 8}.get(escape)
+        if digits is None:
+            return False
+        encoded = body[index + 1 : index + 1 + digits]
+        if len(encoded) != digits or re.fullmatch(r"[0-9A-Fa-f]+", encoded) is None:
+            return False
+        if int(encoded, 16) > 0x10FFFF:
+            return False
+        index += 1 + digits
+    return True
+
+
 def parse_frontmatter_metadata_version(text: str) -> str | None:
     """Return exactly one direct ``metadata.version`` from YAML frontmatter.
 
     This intentionally does not search the Markdown body: examples and prose
     are allowed to mention ``version:``, but they cannot validate package
-    metadata. The small parser is limited to the mapping shape this skill owns
-    and rejects duplicate or nested version keys instead of guessing.
+    metadata. The dependency-free parser accepts the mapping subset this
+    skill's frontmatter uses and fails closed on malformed structure, duplicate
+    keys, collection syntax, or malformed scalar values instead of guessing.
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -298,38 +328,83 @@ def parse_frontmatter_metadata_version(text: str) -> str | None:
     except StopIteration:
         return None
 
-    frontmatter = lines[1:closing]
-    metadata_rows = [
-        index
-        for index, line in enumerate(frontmatter)
-        if re.fullmatch(r"metadata:\s*(?:#.*)?", line)
-    ]
-    if len(metadata_rows) != 1:
-        return None
+    entries: list[tuple[tuple[str, ...], str, str]] = []
+    open_mappings: list[tuple[int, str]] = []
+    seen_keys: dict[tuple[str, ...], set[str]] = {}
+    previous_indent = -1
+    previous_opened_mapping = False
 
-    start = metadata_rows[0] + 1
-    block: list[str] = []
-    for line in frontmatter[start:]:
-        if line and not line[0].isspace():
-            break
-        block.append(line)
-
-    content = [line for line in block if line.strip() and not line.lstrip().startswith("#")]
-    if not content:
-        return None
-    direct_indent = min(len(line) - len(line.lstrip()) for line in content)
-    versions: list[str] = []
-    for line in content:
-        indent = len(line) - len(line.lstrip())
-        if indent != direct_indent:
+    for raw_line in lines[1:closing]:
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
             continue
+        if "\t" in raw_line:
+            return None
         match = re.fullmatch(
-            r"\s*version:\s*(?:\"([^\"]+)\"|'([^']+)'|([0-9]+(?:\.[0-9]+)*))\s*(?:#.*)?",
-            line,
+            r"(?P<indent> *)(?P<key>[A-Za-z_][\w.-]*):(?P<value>(?: +.*)?)",
+            raw_line,
         )
-        if match is not None:
-            versions.append(next(value for value in match.groups() if value is not None))
-    return versions[0] if len(versions) == 1 else None
+        if match is None:
+            return None
+
+        indent = len(match.group("indent"))
+        if previous_indent >= 0 and indent > previous_indent and not previous_opened_mapping:
+            return None
+        while open_mappings and indent <= open_mappings[-1][0]:
+            open_mappings.pop()
+        if indent > 0 and not open_mappings:
+            return None
+
+        parent = tuple(key for _, key in open_mappings)
+        key = match.group("key")
+        value = match.group("value").strip()
+        duplicate = key in seen_keys.setdefault(parent, set())
+        seen_keys[parent].add(key)
+        # Count metadata.version rows below even when one value is malformed;
+        # all other duplicate mapping keys are immediately ambiguous.
+        if duplicate and not (parent == ("metadata",) and key == "version"):
+            return None
+
+        opens_mapping = not value or value.startswith("#")
+        is_metadata_version = parent == ("metadata",) and key == "version"
+        if not opens_mapping and not is_metadata_version:
+            # Flow collections and block scalars are not used by this package's
+            # frontmatter. Rejecting them keeps malformed brackets or multiline
+            # YAML from being mistaken for valid metadata without a YAML runtime.
+            if value[0] in "[{|>" or any(char in value for char in "[]{}"):
+                return None
+            if value[0] == '"':
+                if not valid_double_quoted_yaml_scalar(value):
+                    return None
+            elif value[0] == "'":
+                if re.fullmatch(r"'[^']*'(?:\s+#.*)?", value) is None:
+                    return None
+            elif ": " in value:
+                return None
+
+        entries.append((parent, key, value))
+        if opens_mapping:
+            open_mappings.append((indent, key))
+        previous_indent = indent
+        previous_opened_mapping = opens_mapping
+
+    metadata_rows = [entry for entry in entries if entry[0] == () and entry[1] == "metadata"]
+    if len(metadata_rows) != 1 or metadata_rows[0][2]:
+        return None
+
+    version_rows = [
+        value
+        for parent, key, value in entries
+        if parent == ("metadata",) and key == "version"
+    ]
+    if len(version_rows) != 1:
+        return None
+    match = re.fullmatch(
+        r"(?:\"([^\"]+)\"|'([^']+)'|([0-9]+(?:\.[0-9]+)*))\s*(?:#.*)?",
+        version_rows[0],
+    )
+    if match is None:
+        return None
+    return next(value for value in match.groups() if value is not None)
 
 
 def verify_skill_metadata_version(root: Path, manifests: dict[str, dict[str, Any]], errors: list[str]) -> None:

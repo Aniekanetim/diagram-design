@@ -47,7 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ASSET_DIR = ROOT / "skills/diagram-design/assets"
 
-CELL_RE = re.compile(r'<rect\b(?P<attrs>[^>]*\brx="2"[^>]*?)/?>', re.IGNORECASE)
+CELL_RE = re.compile(r"<rect\b(?P<attrs>[^>]*)/?>", re.IGNORECASE)
 TEXT_RE = re.compile(r"<text\b(?P<attrs>[^>]*)>(?P<body>.*?)</text>", re.IGNORECASE | re.DOTALL)
 CIRCLE_RE = re.compile(r"<circle\b(?P<attrs>[^>]*)/?>", re.IGNORECASE)
 ATTR_RE = re.compile(r'(?P<name>[\w:-]+)="(?P<value>[^"]*)"')
@@ -147,7 +147,7 @@ def estimated_advance(text: str, mono: bool) -> float:
     return advance
 
 
-def parse_cells(source: str) -> list[Box]:
+def parse_cells(source: str, findings: list[str] | None = None) -> list[Box]:
     """Deduped cell rects. Each cell is painted twice: paper mask, then body.
 
     `data-share` may sit on either rect of the pair, so the declared share is
@@ -156,6 +156,9 @@ def parse_cells(source: str) -> list[Box]:
     seen: list[Box] = []
     for m in CELL_RE.finditer(source):
         attrs = {a.group("name"): a.group("value") for a in ATTR_RE.finditer(m.group("attrs"))}
+        has_share_metadata = "data-share" in attrs
+        if attrs.get("rx") != "2" and not has_share_metadata:
+            continue
         try:
             box = Box(
                 float(attrs["x"]),
@@ -164,7 +167,23 @@ def parse_cells(source: str) -> list[Box]:
                 float(attrs["height"]),
                 m.start(),
             )
-        except (KeyError, ValueError):
+        except (KeyError, ValueError) as exc:
+            if has_share_metadata and findings is not None:
+                findings.append(
+                    f"line {line_of(source, m.start())}: data-share rect has missing or "
+                    f"unparseable x/y/width/height geometry ({exc})"
+                )
+            continue
+        coordinates = (box.x, box.y, box.w, box.h)
+        if has_share_metadata and (
+            not all(math.isfinite(value) for value in coordinates) or box.w <= 0 or box.h <= 0
+        ):
+            if findings is not None:
+                findings.append(
+                    f"line {line_of(source, m.start())}: data-share rect geometry must have "
+                    "finite x/y/width/height and strictly positive width/height; "
+                    f"got x={box.x:g}, y={box.y:g}, width={box.w:g}, height={box.h:g}"
+                )
             continue
         if "data-share" in attrs:
             raw_share = attrs["data-share"]
@@ -181,8 +200,6 @@ def parse_cells(source: str) -> list[Box]:
                     )
                 else:
                     box.share = parsed_share
-        if box.area < CELL_MIN_AREA or box.w > CELL_MAX_W or box.h > CELL_MAX_H:
-            continue
         twin = next(
             (
                 s
@@ -208,7 +225,13 @@ def parse_cells(source: str) -> list[Box]:
                 twin.share = box.share
             continue
         seen.append(box)
-    return seen
+    return [
+        box
+        for box in seen
+        if box.share is not None
+        or box.share_errors
+        or (box.area >= CELL_MIN_AREA and box.w <= CELL_MAX_W and box.h <= CELL_MAX_H)
+    ]
 
 
 def label_box(attrs: dict[str, str], body: str) -> Box | None:
@@ -271,14 +294,17 @@ def parse_claim(text: str) -> tuple[float | None, float | None]:
 
 def check(path: Path) -> list[str]:
     source = path.read_text(encoding="utf-8")
-    cells = parse_cells(source)
+    findings: list[str] = []
+    parse_findings: list[str] = []
+    cells = parse_cells(source, parse_findings)
+    findings.extend(f"{path.name}:{finding}" for finding in parse_findings)
     if len(cells) < 3:
-        return [
+        findings.append(
             f"{path.name}: expected at least 3 parseable treemap cells, found {len(cells)} — "
             "the area contract cannot be verified"
-        ]
+        )
+        return findings
 
-    findings: list[str] = []
     labels: dict[int, list[str]] = {index: [] for index in range(len(cells))}
 
     for m in TEXT_RE.finditer(source):
@@ -388,6 +414,11 @@ def check(path: Path) -> list[str]:
         return findings
 
     drawn_total = sum(cell.area for cell in cells)
+    if not math.isfinite(drawn_total) or drawn_total <= 0:
+        findings.append(
+            f"{path.name}: parsed cell area total must be finite and positive; got {drawn_total:g}"
+        )
+        return findings
     if any(cell.share_errors for cell in cells):
         return findings
 
@@ -410,12 +441,34 @@ def check(path: Path) -> list[str]:
                 f"draws {area_share:.2f}% of the area but declares {declared:.2f}% — "
                 f"{relative:+.1f}% relative. Area is the only encoding; resize the cell"
             )
+
+        # A label and the metadata are two statements of one fact. Read every
+        # percentage in the hosted labels: search() alone silently accepted a
+        # later contradictory claim when the first happened to be correct.
+        label_text = " ".join(labels[index])
+        percentages = [
+            value
+            for match in PCT_RE.finditer(label_text)
+            if (value := _number(match)) is not None
+        ]
+        distinct_percentages: list[float] = []
+        for percentage in percentages:
+            if not any(
+                math.isclose(percentage, known, rel_tol=0.0, abs_tol=1e-9)
+                for known in distinct_percentages
+            ):
+                distinct_percentages.append(percentage)
+        if len(distinct_percentages) > 1:
+            rendered = ", ".join(f"{value:g}%" for value in distinct_percentages)
+            findings.append(
+                f"{path.name}:{line_of(source, cell.offset)}: cell {cell.w:g}x{cell.h:g} "
+                f"has conflicting percentage claims ({rendered}) — every hosted label "
+                "must state the same share"
+            )
             continue
 
-        # A label and the metadata are two statements of one fact. Let them
-        # disagree and the picture lies while the gate stays green.
-        percentage, _ = parse_claim(" ".join(labels[index]))
-        if percentage is not None and declared > 0:
+        if distinct_percentages and declared > 0:
+            percentage = distinct_percentages[0]
             drift = abs(percentage - declared)
             # 1pp covers honest rounding of a displayed integer percentage.
             if drift > 1.0:

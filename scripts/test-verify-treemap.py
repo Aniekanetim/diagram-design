@@ -13,6 +13,7 @@ Exit: 0 all pass, 1 a case failed.
 from __future__ import annotations
 
 import runpy
+import re
 import subprocess
 import sys
 import tempfile
@@ -22,9 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECKER = ROOT / "scripts/verify-treemap.py"
 GOOD = ROOT / "skills/diagram-design/assets/example-treemap.html"
 SHIPPED = sorted(GOOD.parent.glob("example-treemap*.html"))
-ESTIMATED_ADVANCE = runpy.run_path(str(CHECKER), run_name="verify_treemap_test")[
-    "estimated_advance"
-]
+VERIFY_NAMESPACE = runpy.run_path(str(CHECKER), run_name="verify_treemap_test")
+ESTIMATED_ADVANCE = VERIFY_NAMESPACE["estimated_advance"]
+PARSE_CELLS = VERIFY_NAMESPACE["parse_cells"]
 KOREAN_LABEL = "남아메리카 인구 구성 비율 요약"
 JAPANESE_LABEL = "南アメリカ人口構成比率の概要"
 
@@ -388,6 +389,7 @@ def main() -> int:
 
         # 12. A treemap with too few parseable cells is unchecked, not clean.
         unparsable = source.replace(' rx="2"', ' rx="3"')
+        unparsable = re.sub(r' data-share="[^"]+"', "", unparsable)
         code, output = run(write(directory, "too-few-cells.html", unparsable))
         if code == 0:
             failures.append("a treemap with no parseable cells was accepted")
@@ -395,6 +397,120 @@ def main() -> int:
             failures.append(f"too-few-cells fixture lacked the right finding: {output.strip()}")
         else:
             print("OK: too few parseable cells fails closed")
+
+        # 13. An explicitly metadata-bearing cell remains a cell even below
+        #     the generic 400px decorative-rect threshold. Oceania at 2x124
+        #     used to disappear with its mask, leaving a plausible 99.43%
+        #     total that slipped through the rounding tolerance.
+        below_threshold = source.replace(
+            '<rect x="940" y="296" width="16" height="124"',
+            '<rect x="940" y="296" width="2" height="124"',
+        ).replace('cx="948" cy="320"', 'cx="941" cy="320"').replace(
+            '<text x="948" y="323"', '<text x="941" y="323"'
+        )
+        if below_threshold == source:
+            failures.append("could not build the below-threshold-cell fixture")
+        else:
+            sliver = next(
+                (cell for cell in PARSE_CELLS(below_threshold) if cell.w == 2 and cell.h == 124),
+                None,
+            )
+            if sliver is None or sliver.rect_count != 2:
+                failures.append(
+                    "the below-threshold metadata cell lost its same-geometry mask/body association"
+                )
+            code, output = run(write(directory, "below-threshold-cell.html", below_threshold))
+            if code == 0:
+                failures.append("a metadata-bearing cell below CELL_MIN_AREA was discarded")
+            elif "cell 2x124" not in output:
+                failures.append(
+                    f"below-threshold cell was not preserved as a logical cell: {output.strip()}"
+                )
+            else:
+                print("OK: metadata-bearing cells bypass the decorative-area threshold")
+
+        no_rounding_marker = source.replace(
+            'rx="2" data-share="0.56"', 'rx="3" data-share="0.56"', 1
+        )
+        code, output = run(write(directory, "metadata-with-nonstandard-rx.html", no_rounding_marker))
+        if code != 0:
+            failures.append(
+                f"an otherwise valid data-share rect depended on decorative rx=2: {output.strip()}"
+            )
+        else:
+            print("OK: data-share identifies a cell independently of decorative rx")
+
+        # 14. Every percentage claim hosted by a cell must agree. Reading only
+        #     the first match accepted a later contradiction when 59% appeared
+        #     before 42% in the same cell.
+        conflicting_labels = source.replace(
+            "4.78B · 59% of world",
+            "4.78B · 59% of world · alternate claim 42%",
+            1,
+        )
+        code, output = run(write(directory, "conflicting-label-claims.html", conflicting_labels))
+        if code == 0:
+            failures.append("distinct percentage claims in one cell were accepted")
+        elif "conflicting percentage claims" not in output:
+            failures.append(f"conflicting labels lacked the right finding: {output.strip()}")
+        else:
+            print("OK: every hosted percentage claim must agree")
+
+        # 15. Explicit metadata outranks both sides of the decorative-rect
+        #     heuristic. A declared cell cannot disappear merely because a bad
+        #     edit makes it implausibly wide or tall.
+        for label, old, new, dimensions in (
+            (
+                "above-max-width",
+                '<rect x="940" y="296" width="16" height="124"',
+                '<rect x="40" y="296" width="901" height="124"',
+                "901x124",
+            ),
+            (
+                "above-max-height",
+                '<rect x="940" y="296" width="16" height="124"',
+                '<rect x="940" y="40" width="16" height="461"',
+                "16x461",
+            ),
+        ):
+            oversized_declared = source.replace(old, new)
+            if oversized_declared == source:
+                failures.append(f"could not build the {label} fixture")
+                continue
+            code, output = run(write(directory, f"{label}.html", oversized_declared))
+            if code == 0:
+                failures.append(f"metadata-bearing {label} cell was discarded")
+            elif f"cell {dimensions}" not in output:
+                failures.append(f"{label} cell was not retained: {output.strip()}")
+            else:
+                print(f"OK: metadata-bearing {label} cells bypass decorative limits")
+
+        # 16. Geometry on a declared cell is untrusted metadata too. Missing,
+        #     malformed, non-finite, zero, or negative dimensions must be a
+        #     finding and must never poison the area total with NaN/Infinity.
+        asia_declared = (
+            '<rect x="40" y="40" width="532" height="380" rx="2" '
+            'data-share="59.04"'
+        )
+        for label, replacement in (
+            ("missing", '<rect x="40" y="40" height="380" rx="2" data-share="59.04"'),
+            ("nonnumeric", asia_declared.replace('width="532"', 'width="wide"')),
+            ("nan", asia_declared.replace('width="532"', 'width="NaN"')),
+            ("infinity", asia_declared.replace('width="532"', 'width="Infinity"')),
+            ("zero", asia_declared.replace('width="532"', 'width="0"')),
+            ("negative", asia_declared.replace('width="532"', 'width="-1"')),
+        ):
+            bad_geometry = source.replace(asia_declared, replacement, 1)
+            if bad_geometry == source:
+                failures.append(f"could not build the {label}-geometry fixture")
+                continue
+            code, output = run(write(directory, f"geometry-{label}.html", bad_geometry))
+            if code == 0:
+                failures.append(f"{label} data-share geometry was accepted")
+            elif "data-share rect" not in output:
+                failures.append(f"{label} geometry lacked an explicit finding: {output.strip()}")
+            else:
+                print(f"OK: {label} data-share geometry fails closed")
 
     for failure in failures:
         print(f"FAIL: {failure}")
