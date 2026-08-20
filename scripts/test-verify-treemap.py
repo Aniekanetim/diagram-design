@@ -12,6 +12,7 @@ Exit: 0 all pass, 1 a case failed.
 
 from __future__ import annotations
 
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CHECKER = ROOT / "scripts/verify-treemap.py"
 GOOD = ROOT / "skills/diagram-design/assets/example-treemap.html"
+SHIPPED = sorted(GOOD.parent.glob("example-treemap*.html"))
+ESTIMATED_ADVANCE = runpy.run_path(str(CHECKER), run_name="verify_treemap_test")[
+    "estimated_advance"
+]
+KOREAN_LABEL = "남아메리카 인구 구성 비율 요약"
+JAPANESE_LABEL = "南アメリカ人口構成比率の概要"
 
 
 def run(path: Path) -> tuple[int, str]:
@@ -43,15 +50,35 @@ def main() -> int:
     source = GOOD.read_text(encoding="utf-8")
     failures: list[str] = []
 
+    # Pin the estimator independently from CLI diagnostics. The Korean fixture
+    # has 13 wide glyphs and four narrow spaces; the Japanese fixture has 14
+    # wide glyphs. This catches a width-contract regression without coupling
+    # the overflow fixture to its human-readable pixel message.
+    for label, expected, language in (
+        (KOREAN_LABEL, 15.4, "Korean"),
+        (JAPANESE_LABEL, 14.0, "Japanese"),
+    ):
+        actual = ESTIMATED_ADVANCE(label, False)
+        if abs(actual - expected) > 1e-9:
+            failures.append(
+                f"{language} estimator contract moved: expected {expected:g}em, got {actual:g}em"
+            )
+        else:
+            print(f"OK: {language} wide-glyph estimator contract is {expected:g}em")
+
     with tempfile.TemporaryDirectory() as raw:
         directory = Path(raw)
 
-        # 1. The shipped example must pass untouched.
-        code, output = run(write(directory, "clean.html", source))
-        if code != 0:
-            failures.append(f"clean example was rejected: {output.strip()}")
-        else:
-            print("OK: the shipped treemap passes")
+        # 1. Every shipped Latin example must pass untouched, proving the
+        #    Unicode estimator did not move the calibrated Latin baseline.
+        shipped_clean = True
+        for path in SHIPPED:
+            code, output = run(path)
+            if code != 0:
+                shipped_clean = False
+                failures.append(f"clean example {path.name} was rejected: {output.strip()}")
+        if shipped_clean:
+            print(f"OK: all {len(SHIPPED)} shipped Latin treemaps pass")
 
         # 2. Shrink a labelled cell below the share it prints. This is the
         #    defect that shipped in review — a cell drawn smaller than it claims
@@ -104,7 +131,51 @@ def main() -> int:
             else:
                 print("OK: a label wider than its cell is rejected")
 
-        # 4b. Overflow off the LEFT edge, via an end-anchored label. Checking
+        # 4a. Reproduce #115: most glyphs in this Korean translation are
+        #     full-width. The old 0.60em character-count estimate called it
+        #     122.4px wide and accepted it in 132px of available space, while
+        #     Chromium measured 146.2px. A conservative 1em wide-glyph advance
+        #     must fail closed without changing the Latin estimate.
+        korean = source.replace(
+            '<text x="804" y="324" fill="#2d3142" font-size="12" font-weight="600" '
+            'font-family="\'Geist\', sans-serif">South America</text>',
+            '<text x="804" y="324" fill="#2d3142" font-size="12" font-weight="600" '
+            'font-family="\'Geist\', \'Apple SD Gothic Neo\', \'Noto Sans KR\', '
+            f'\'Malgun Gothic\', sans-serif">{KOREAN_LABEL}</text>',
+        )
+        if korean == source:
+            failures.append("could not build the Korean-overflow fixture (anchor moved)")
+        else:
+            code, output = run(write(directory, "korean-overflow.html", korean))
+            if code == 0:
+                failures.append("full-width Korean label overflowing its cell was accepted")
+            elif "label" not in output or "overflows" not in output:
+                failures.append(f"Korean fixture lacked a label-overflow finding: {output.strip()}")
+            else:
+                print("OK: a Korean label in the old-estimator boundary gap is rejected")
+
+        # 4b. Japanese Han and kana are also Unicode-wide. Cover the documented
+        #     CJK contract beyond Hangul with another label that fits under the
+        #     old 0.60em estimate but overflows under the conservative contract.
+        japanese = source.replace(
+            '<text x="804" y="324" fill="#2d3142" font-size="12" font-weight="600" '
+            'font-family="\'Geist\', sans-serif">South America</text>',
+            '<text x="804" y="324" fill="#2d3142" font-size="12" font-weight="600" '
+            'font-family="\'Geist\', \'Hiragino Sans\', \'Noto Sans JP\', '
+            f'\'Yu Gothic\', sans-serif">{JAPANESE_LABEL}</text>',
+        )
+        if japanese == source:
+            failures.append("could not build the Japanese-overflow fixture (anchor moved)")
+        else:
+            code, output = run(write(directory, "japanese-overflow.html", japanese))
+            if code == 0:
+                failures.append("full-width Japanese label overflowing its cell was accepted")
+            elif "label" not in output or "overflows" not in output:
+                failures.append(f"Japanese fixture lacked a label-overflow finding: {output.strip()}")
+            else:
+                print("OK: a Japanese full-width label is rejected when it overflows")
+
+        # 4c. Overflow off the LEFT edge, via an end-anchored label. Checking
         #     only the right and bottom edges would pass this silently, and the
         #     text would read as belonging to the cell next door.
         left_over = source.replace(
@@ -122,7 +193,7 @@ def main() -> int:
             else:
                 print("OK: a label overflowing the left edge is rejected")
 
-        # 4c. Overflow off the TOP edge — the label's ascent clears the cell.
+        # 4d. Overflow off the TOP edge — the label's ascent clears the cell.
         top_over = source.replace(
             '<text x="592" y="68" fill="#2d3142" font-size="13"',
             '<text x="592" y="44" fill="#2d3142" font-size="13"',
@@ -138,7 +209,7 @@ def main() -> int:
             else:
                 print("OK: a label overflowing the top edge is rejected")
 
-        # 4d. A sliver can be narrower than the fixed 10px information-mark
+        # 4e. A sliver can be narrower than the fixed 10px information-mark
         #     disc. The marker must never cross into the neighbouring cell.
         marker_over = source.replace(
             '<rect x="940" y="296" width="16" height="124"',
@@ -156,6 +227,21 @@ def main() -> int:
                 failures.append(f"marker overflow not named in the finding: {output.strip()}")
             else:
                 print("OK: an information mark overflowing its cell is rejected")
+
+        # 4f. Combining marks do not advance independently. Eighteen decomposed
+        #     accented glyphs fit by the unchanged Latin baseline (129.6px in
+        #     132px), but counting every acute accent as a character would
+        #     incorrectly double the estimate and reject the label.
+        decomposed = ("e\N{COMBINING ACUTE ACCENT}" * 18)
+        combining = source.replace(">South America</text>", f">{decomposed}</text>")
+        if combining == source:
+            failures.append("could not build the combining-mark fixture (anchor moved)")
+        else:
+            code, output = run(write(directory, "combining-marks.html", combining))
+            if code != 0:
+                failures.append(f"non-advancing combining marks were overcounted: {output.strip()}")
+            else:
+                print("OK: combining marks do not create phantom label overflow")
 
         # 5. The shipped example leaves its smallest cell deliberately
         #    unlabelled. That must not switch the area check off for the cells

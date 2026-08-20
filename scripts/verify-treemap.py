@@ -22,9 +22,10 @@ later-painted nodes) reads a cell against the number printed inside it.
 
 Text extent is estimated from font metrics rather than measured in a browser,
 deliberately: every other gate here is pure Python and runs in CI with no
-browser. The advances below are calibrated against Chromium renderings of the
-shipped Geist / Geist Mono faces and rounded UP, so the estimate reports
-overflow slightly before real overflow, never after.
+browser. The Latin advances below are calibrated against Chromium renderings of
+the shipped Geist / Geist Mono faces and rounded UP. Unicode wide/full-width
+characters use a conservative 1em advance, so both estimates report overflow
+slightly before real overflow, never after.
 
 Usage:
     python3 scripts/verify-treemap.py --all
@@ -39,6 +40,7 @@ import argparse
 import html
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -66,6 +68,7 @@ VALUE_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*(?P<unit>[BMK])\b")
 
 MONO_ADVANCE = 0.62
 SANS_ADVANCE = 0.60
+WIDE_ADVANCE = 1.00
 ASCENT = 0.74
 UNITS = {None: 1.0, "K": 1e3, "M": 1e6, "B": 1e9}
 
@@ -116,6 +119,23 @@ def plain(body: str) -> str:
     return html.unescape(TAG_RE.sub("", body)).strip()
 
 
+def estimated_advance(text: str, mono: bool) -> float:
+    """Conservative text advance in em, preserving the calibrated Latin baseline."""
+    narrow_advance = MONO_ADVANCE if mono else SANS_ADVANCE
+    advance = 0.0
+    for char in text:
+        # Nonspacing and enclosing marks modify the preceding glyph; counting
+        # them as another glyph rejects labels that do fit. Spacing combining
+        # marks (Mc) retain the narrow estimate because they can advance.
+        if unicodedata.category(char) in {"Mn", "Me"}:
+            continue
+        if unicodedata.east_asian_width(char) in {"W", "F"}:
+            advance += WIDE_ADVANCE
+        else:
+            advance += narrow_advance
+    return advance
+
+
 def parse_cells(source: str) -> list[Box]:
     """Deduped cell rects. Each cell is painted twice: paper mask, then body."""
     seen: list[Box] = []
@@ -149,11 +169,11 @@ def label_box(attrs: dict[str, str], body: str) -> Box | None:
         size = float(attrs.get("font-size", "12"))
     except (KeyError, ValueError):
         return None
-    chars = len(plain(body))
-    if not chars:
+    text = plain(body)
+    if not text:
         return None
     mono = "mono" in attrs.get("font-family", "").lower()
-    width = chars * size * (MONO_ADVANCE if mono else SANS_ADVANCE)
+    width = size * estimated_advance(text, mono)
     anchor = attrs.get("text-anchor", "start")
 
     transform = attrs.get("transform", "")
